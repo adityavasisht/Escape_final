@@ -54,6 +54,21 @@ const tripSchema = new mongoose.Schema({
     enum: ['active', 'inactive', 'completed'],
     default: 'active',
   },
+  itineraryImages: [{
+    url: {
+      type: String,
+      required: true
+    },
+    publicId: {
+      type: String,
+      required: true
+    },
+    originalName: String
+  }],
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
 }, {
   timestamps: true,
 });
