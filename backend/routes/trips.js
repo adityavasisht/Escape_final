@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const Trip = require('../models/Trip');
 
 console.log('📁 Trips routes module loaded');
 
@@ -8,33 +9,24 @@ router.get('/', async (req, res) => {
   console.log('🎯 GET /api/trips route hit');
   
   try {
-    // Sample trips data
-    const trips = [
-      {
-        id: 1,
-        tripName: "Golden Triangle Tour",
-        totalBudget: 45000,
-        locations: ["Delhi", "Agra", "Jaipur"],
-        status: "active"
-      },
-      {
-        id: 2,
-        tripName: "Kerala Backwaters",
-        totalBudget: 35000,
-        locations: ["Kochi", "Alleppey", "Munnar"],
-        status: "active"
-      }
-    ];
+    const trips = await Trip.find({ status: 'active' })
+      .select('tripName totalBudget locations description departureDateTime arrivalDateTime transportMedium maxCapacity currentBookings itineraryImages createdAt')
+      .sort({ createdAt: -1 });
+    
+    console.log(`✅ Found ${trips.length} active trips in database`);
     
     res.json({
       success: true,
-      trips: trips
+      trips: trips,
+      total: trips.length,
+      message: 'Active trips retrieved successfully'
     });
+    
   } catch (error) {
     console.error('❌ Error fetching trips:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message || 'Internal server error while fetching trips'
     });
   }
 });
@@ -44,29 +36,41 @@ router.get('/:id', async (req, res) => {
   console.log(`🎯 GET /api/trips/${req.params.id} route hit`);
   
   try {
-    const tripId = parseInt(req.params.id);
+    const tripId = req.params.id;
+    const trip = await Trip.findById(tripId);
     
-    const trip = {
-      id: tripId,
-      tripName: "Sample Trip",
-      totalBudget: 30000,
-      locations: ["Mumbai", "Goa"],
-      description: "Amazing coastal trip"
-    };
+    if (!trip) {
+      return res.status(404).json({
+        success: false,
+        error: 'Trip not found'
+      });
+    }
+    
+    console.log(`✅ Trip found: ${trip.tripName}`);
     
     res.json({
       success: true,
-      trip: trip
+      trip: trip,
+      message: 'Trip retrieved successfully'
     });
+    
   } catch (error) {
     console.error('❌ Error fetching trip:', error);
+    
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid trip ID format'
+      });
+    }
+    
     res.status(500).json({
       success: false,
-      error: error.message
+      error: error.message || 'Internal server error while fetching trip'
     });
   }
 });
 
-console.log('✅ Trips routes configured');
+console.log('✅ Trips routes configured with database integration');
 
 module.exports = router;

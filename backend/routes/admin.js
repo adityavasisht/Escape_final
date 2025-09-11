@@ -1,19 +1,100 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
+const cloudinary = require('cloudinary').v2;
+const Trip = require('../models/Trip');
+const mongoose = require('mongoose');
 
 console.log('📁 Admin routes module loaded');
 
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
+// Configure multer for file uploads
+const storage = multer.memoryStorage();
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed!'), false);
+    }
+  }
+});
+
 // Create new trip (POST /api/admin/trips)
-router.post('/trips', async (req, res) => {
-  console.log('🎯 POST /api/admin/trips route hit');
-  console.log('📦 Request body:', req.body);
-  console.log('🌐 Request origin:', req.headers.origin);
+router.post('/trips', upload.array('itineraryImages', 10), async (req, res) => {
+  console.log('🎯🎯🎯 ADMIN.JS ROUTE HIT - MONGODB VERSION 🎯🎯🎯');
+  console.log('📦 Request body keys:', Object.keys(req.body));
+  console.log('📦 Trip name:', req.body.tripName);
+  console.log('📦 Total budget:', req.body.totalBudget);
+  console.log('📸 Files uploaded:', req.files?.length || 0);
+  console.log('🔗 Mongoose connection state:', mongoose.connection.readyState);
+  console.log('🔗 Database name:', mongoose.connection.name);
   
   try {
+    const imageUrls = [];
+    
+    // Upload images to Cloudinary if files are provided
+    if (req.files && req.files.length > 0) {
+      console.log(`🔄 Uploading ${req.files.length} itinerary images to Cloudinary...`);
+      
+      for (const file of req.files) {
+        try {
+          const result = await new Promise((resolve, reject) => {
+            cloudinary.uploader.upload_stream(
+              { 
+                folder: 'escape-itineraries',
+                transformation: [
+                  { width: 800, height: 600, crop: 'fill', quality: 'auto' }
+                ]
+              },
+              (error, result) => {
+                if (error) {
+                  console.error('Cloudinary upload error:', error);
+                  reject(error);
+                } else {
+                  resolve(result);
+                }
+              }
+            ).end(file.buffer);
+          });
+          
+          imageUrls.push({
+            url: result.secure_url,
+            publicId: result.public_id,
+            originalName: file.originalname
+          });
+          
+          console.log(`✅ Image uploaded: ${file.originalname}`);
+        } catch (uploadError) {
+          console.error(`❌ Failed to upload ${file.originalname}:`, uploadError);
+        }
+      }
+      
+      console.log(`📸 Successfully uploaded ${imageUrls.length}/${req.files.length} images`);
+    }
+    
+    // Parse locations if it's a JSON string (from FormData)
+    let locations;
+    try {
+      locations = typeof req.body.locations === 'string' 
+        ? JSON.parse(req.body.locations) 
+        : req.body.locations;
+    } catch (parseError) {
+      console.error('Error parsing locations:', parseError);
+      locations = Array.isArray(req.body.locations) ? req.body.locations : [req.body.locations];
+    }
+    
     const {
       tripName,
       totalBudget,
-      locations,
       departureDateTime,
       transportMedium,
       departureLocation,
@@ -33,7 +114,7 @@ router.post('/trips', async (req, res) => {
       });
     }
     
-    if (!totalBudget || totalBudget <= 0) {
+    if (!totalBudget || parseFloat(totalBudget) <= 0) {
       return res.status(400).json({
         success: false,
         error: 'Valid total budget is required'
@@ -47,17 +128,16 @@ router.post('/trips', async (req, res) => {
       });
     }
     
-    if (!maxCapacity || maxCapacity <= 0) {
+    if (!maxCapacity || parseInt(maxCapacity) <= 0) {
       return res.status(400).json({
         success: false,
         error: 'Valid maximum capacity is required'
       });
     }
     
-    // Create new trip object
-    const newTrip = {
-      id: Date.now(), // Temporary ID for development
-      tripName,
+    // Create and SAVE the trip to database
+    const newTrip = new Trip({
+      tripName: tripName.toString(),
       totalBudget: parseFloat(totalBudget),
       locations: Array.isArray(locations) ? locations : [locations],
       departureDateTime: departureDateTime || null,
@@ -71,32 +151,33 @@ router.post('/trips', async (req, res) => {
       maxCapacity: parseInt(maxCapacity),
       currentBookings: 0,
       status: 'active',
-      adminId: 'temp-admin-id', // TODO: Get from Clerk authentication
-      agencyName: 'Escape Travel Agency', // TODO: Get from admin metadata
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-    
-    console.log('✅ Trip created successfully:', {
-      id: newTrip.id,
-      name: newTrip.tripName,
-      budget: newTrip.totalBudget,
-      locations: newTrip.locations,
-      capacity: newTrip.maxCapacity
+      adminId: 'temp-admin-id',
+      agencyName: 'Escape Travel Agency',
+      itineraryImages: imageUrls
     });
     
-    // Send success response
+    console.log('💾 About to save trip to database...');
+    const savedTrip = await newTrip.save();
+    console.log('✅ Trip SAVED to database with ID:', savedTrip._id);
+    
     res.status(201).json({
       success: true,
-      trip: newTrip,
-      message: `Trip "${tripName}" created successfully!`
+      trip: savedTrip,
+      message: `Trip "${tripName}" created successfully with ${imageUrls.length} itinerary images!`,
+      imageCount: imageUrls.length
     });
     
   } catch (error) {
-    console.error('❌ Error creating trip:', error);
+    console.error('❌❌❌ FULL ERROR DETAILS ❌❌❌');
+    console.error('Error message:', error.message);
+    console.error('Error name:', error.name);
+    console.error('Error stack:', error.stack);
+    console.error('Mongoose connection state:', mongoose.connection.readyState);
+    
     res.status(500).json({
       success: false,
-      error: error.message || 'Internal server error while creating trip'
+      error: error.message || 'Internal server error while creating trip',
+      mongooseState: mongoose.connection.readyState
     });
   }
 });
@@ -104,57 +185,11 @@ router.post('/trips', async (req, res) => {
 // Get all trips for admin (GET /api/admin/trips)
 router.get('/trips', async (req, res) => {
   console.log('🎯 GET /api/admin/trips route hit');
-  console.log('🌐 Request origin:', req.headers.origin);
   
   try {
-    // TODO: Replace with actual database query
-    // For now, return sample data
-    const trips = [
-      {
-        id: 1,
-        tripName: "Golden Triangle Tour",
-        totalBudget: 45000,
-        locations: ["Delhi", "Agra", "Jaipur"],
-        departureDateTime: "2025-09-15T08:00:00",
-        transportMedium: "car",
-        departureLocation: "Delhi Airport",
-        arrivalDateTime: "2025-09-20T18:00:00",
-        arrivalLocation: "Delhi Airport",
-        description: "Experience the best of North India with visits to iconic monuments",
-        inclusions: "Accommodation, meals, transportation, guide",
-        exclusions: "Personal expenses, tips",
-        maxCapacity: 25,
-        currentBookings: 12,
-        status: "active",
-        adminId: "temp-admin-id",
-        agencyName: "Escape Travel Agency",
-        createdAt: "2025-08-20T10:00:00.000Z",
-        updatedAt: "2025-08-20T10:00:00.000Z"
-      },
-      {
-        id: 2,
-        tripName: "Kerala Backwaters",
-        totalBudget: 35000,
-        locations: ["Kochi", "Alleppey", "Munnar"],
-        departureDateTime: "2025-10-01T09:00:00",
-        transportMedium: "mixed",
-        departureLocation: "Kochi Airport",
-        arrivalDateTime: "2025-10-06T16:00:00",
-        arrivalLocation: "Kochi Airport",
-        description: "Explore the serene backwaters and hill stations of Kerala",
-        inclusions: "Houseboat stay, hill resort, meals, transfers",
-        exclusions: "Airfare, personal expenses",
-        maxCapacity: 20,
-        currentBookings: 8,
-        status: "active",
-        adminId: "temp-admin-id",
-        agencyName: "Escape Travel Agency",
-        createdAt: "2025-08-21T14:30:00.000Z",
-        updatedAt: "2025-08-21T14:30:00.000Z"
-      }
-    ];
+    const trips = await Trip.find().sort({ createdAt: -1 });
     
-    console.log(`✅ Returning ${trips.length} trips for admin`);
+    console.log(`✅ Found ${trips.length} trips in database`);
     
     res.json({
       success: true,
@@ -177,38 +212,15 @@ router.get('/trips/:id', async (req, res) => {
   console.log(`🎯 GET /api/admin/trips/${req.params.id} route hit`);
   
   try {
-    const tripId = parseInt(req.params.id);
+    const tripId = req.params.id;
+    const trip = await Trip.findById(tripId);
     
-    if (!tripId || isNaN(tripId)) {
-      return res.status(400).json({
+    if (!trip) {
+      return res.status(404).json({
         success: false,
-        error: 'Invalid trip ID'
+        error: 'Trip not found'
       });
     }
-    
-    // TODO: Replace with actual database query
-    // For now, return sample data
-    const trip = {
-      id: tripId,
-      tripName: "Sample Trip",
-      totalBudget: 30000,
-      locations: ["Mumbai", "Goa"],
-      departureDateTime: "2025-09-10T10:00:00",
-      transportMedium: "flight",
-      departureLocation: "Mumbai",
-      arrivalDateTime: "2025-09-15T20:00:00",
-      arrivalLocation: "Mumbai",
-      description: "A wonderful coastal trip",
-      inclusions: "Hotel, meals, sightseeing",
-      exclusions: "Personal expenses",
-      maxCapacity: 15,
-      currentBookings: 5,
-      status: "active",
-      adminId: "temp-admin-id",
-      agencyName: "Escape Travel Agency",
-      createdAt: "2025-08-22T12:00:00.000Z",
-      updatedAt: "2025-08-22T12:00:00.000Z"
-    };
     
     console.log(`✅ Trip found: ${trip.tripName}`);
     
@@ -220,6 +232,14 @@ router.get('/trips/:id', async (req, res) => {
     
   } catch (error) {
     console.error('❌ Error fetching trip:', error);
+    
+    if (error.name === 'CastError') {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid trip ID format'
+      });
+    }
+    
     res.status(500).json({
       success: false,
       error: error.message || 'Internal server error while fetching trip'
@@ -228,34 +248,104 @@ router.get('/trips/:id', async (req, res) => {
 });
 
 // Update trip (PUT /api/admin/trips/:id)
-router.put('/trips/:id', async (req, res) => {
+router.put('/trips/:id', upload.array('itineraryImages', 10), async (req, res) => {
   console.log(`🎯 PUT /api/admin/trips/${req.params.id} route hit`);
   console.log('📦 Update data:', req.body);
+  console.log('📸 Files uploaded:', req.files?.length || 0);
   
   try {
-    const tripId = parseInt(req.params.id);
-    const updateData = req.body;
+    const tripId = req.params.id;
     
-    if (!tripId || isNaN(tripId)) {
+    if (!tripId) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid trip ID'
+        error: 'Trip ID is required'
       });
     }
     
-    // TODO: Replace with actual database update
-    const updatedTrip = {
-      id: tripId,
-      ...updateData,
-      updatedAt: new Date().toISOString()
+    // Handle image uploads
+    const imageUrls = [];
+    if (req.files && req.files.length > 0) {
+      console.log(`🔄 Uploading ${req.files.length} new images to Cloudinary...`);
+      
+      for (const file of req.files) {
+        try {
+          const result = await new Promise((resolve, reject) => {
+            cloudinary.uploader.upload_stream(
+              { 
+                folder: 'escape-itineraries',
+                transformation: [{ width: 800, height: 600, crop: 'fill', quality: 'auto' }]
+              },
+              (error, result) => {
+                if (error) reject(error);
+                else resolve(result);
+              }
+            ).end(file.buffer);
+          });
+          
+          imageUrls.push({
+            url: result.secure_url,
+            publicId: result.public_id,
+            originalName: file.originalname
+          });
+        } catch (uploadError) {
+          console.error(`❌ Failed to upload ${file.originalname}:`, uploadError);
+        }
+      }
+    }
+    
+    // Parse locations
+    let locations;
+    try {
+      locations = typeof req.body.locations === 'string' 
+        ? JSON.parse(req.body.locations) 
+        : req.body.locations;
+    } catch (parseError) {
+      locations = Array.isArray(req.body.locations) ? req.body.locations : [req.body.locations];
+    }
+    
+    // Prepare update data
+    const updateData = {
+      tripName: req.body.tripName,
+      totalBudget: parseFloat(req.body.totalBudget),
+      locations: locations,
+      departureDateTime: req.body.departureDateTime,
+      transportMedium: req.body.transportMedium,
+      departureLocation: req.body.departureLocation,
+      arrivalDateTime: req.body.arrivalDateTime,
+      arrivalLocation: req.body.arrivalLocation,
+      description: req.body.description || '',
+      inclusions: req.body.inclusions || '',
+      exclusions: req.body.exclusions || '',
+      maxCapacity: parseInt(req.body.maxCapacity)
     };
     
-    console.log(`✅ Trip ${tripId} updated successfully`);
+    // Add new images if any were uploaded
+    if (imageUrls.length > 0) {
+      updateData.itineraryImages = imageUrls;
+    }
+    
+    // UPDATE IN DATABASE
+    const updatedTrip = await Trip.findByIdAndUpdate(
+      tripId,
+      updateData,
+      { new: true, runValidators: true }
+    );
+    
+    if (!updatedTrip) {
+      return res.status(404).json({
+        success: false,
+        error: 'Trip not found'
+      });
+    }
+    
+    console.log(`✅ Trip ${tripId} updated in database`);
     
     res.json({
       success: true,
       trip: updatedTrip,
-      message: 'Trip updated successfully'
+      message: `Trip "${updatedTrip.tripName}" updated successfully`,
+      imageCount: imageUrls.length
     });
     
   } catch (error) {
@@ -272,23 +362,21 @@ router.delete('/trips/:id', async (req, res) => {
   console.log(`🎯 DELETE /api/admin/trips/${req.params.id} route hit`);
   
   try {
-    const tripId = parseInt(req.params.id);
+    const tripId = req.params.id;
+    const deletedTrip = await Trip.findByIdAndDelete(tripId);
     
-    if (!tripId || isNaN(tripId)) {
-      return res.status(400).json({
+    if (!deletedTrip) {
+      return res.status(404).json({
         success: false,
-        error: 'Invalid trip ID'
+        error: 'Trip not found'
       });
     }
-    
-    // TODO: Replace with actual database deletion
-    // Check if trip has bookings before deletion
     
     console.log(`✅ Trip ${tripId} deleted successfully`);
     
     res.json({
       success: true,
-      message: `Trip ${tripId} deleted successfully`
+      message: `Trip "${deletedTrip.tripName}" deleted successfully`
     });
     
   } catch (error) {
@@ -300,29 +388,54 @@ router.delete('/trips/:id', async (req, res) => {
   }
 });
 
+// Test simple save endpoint
+router.post('/test-save', async (req, res) => {
+  console.log('🧪 TESTING SIMPLE SAVE...');
+  try {
+    const testTrip = new Trip({
+      tripName: 'Simple Test Trip',
+      totalBudget: 5000,
+      locations: ['Test City'],
+      maxCapacity: 10
+    });
+    
+    console.log('💾 About to save test trip...');
+    const saved = await testTrip.save();
+    console.log('✅ Test trip SAVED with ID:', saved._id);
+    
+    res.json({ 
+      success: true, 
+      message: 'Test save worked!', 
+      trip: saved 
+    });
+  } catch (error) {
+    console.error('❌ Test save FAILED:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
 // Get admin dashboard stats (GET /api/admin/stats)
 router.get('/stats', async (req, res) => {
   console.log('🎯 GET /api/admin/stats route hit');
   
   try {
-    // TODO: Replace with actual database queries
+    const totalTrips = await Trip.countDocuments();
+    const activeTrips = await Trip.countDocuments({ status: 'active' });
+    
     const stats = {
-      totalTrips: 15,
-      activeTrips: 12,
-      totalBookings: 147,
-      pendingBookings: 8,
-      totalRevenue: 2456780,
-      thisMonthRevenue: 145600,
-      totalCustomers: 89,
-      activeCustomers: 67,
+      totalTrips,
+      activeTrips,
+      totalBookings: 0, // You can calculate this based on your booking model
+      pendingBookings: 0,
+      totalRevenue: 0,
+      thisMonthRevenue: 0,
+      totalCustomers: 0,
+      activeCustomers: 0,
       averageRating: 4.6,
-      topDestinations: [
-        { name: "Goa", bookings: 23 },
-        { name: "Rajasthan", bookings: 19 },
-        { name: "Kerala", bookings: 15 },
-        { name: "Himachal Pradesh", bookings: 12 },
-        { name: "Kashmir", bookings: 8 }
-      ]
+      topDestinations: []
     };
     
     console.log('✅ Admin stats retrieved successfully');
@@ -342,34 +455,6 @@ router.get('/stats', async (req, res) => {
   }
 });
 
-// Test admin endpoint (GET /api/admin/test)
-router.get('/test', (req, res) => {
-  console.log('🎯 GET /api/admin/test route hit');
-  
-  res.json({
-    success: true,
-    message: 'Admin routes are working!',
-    timestamp: new Date().toISOString(),
-    routes: [
-      'GET /api/admin/test',
-      'GET /api/admin/trips',
-      'POST /api/admin/trips',
-      'GET /api/admin/trips/:id',
-      'PUT /api/admin/trips/:id',
-      'DELETE /api/admin/trips/:id',
-      'GET /api/admin/stats'
-    ]
-  });
-});
-
-console.log('✅ Admin routes configured:', [
-  'GET /test',
-  'GET /trips',
-  'POST /trips',
-  'GET /trips/:id',
-  'PUT /trips/:id',
-  'DELETE /trips/:id',
-  'GET /stats'
-]);
+console.log('✅ Admin routes configured with database integration');
 
 module.exports = router;
