@@ -45,6 +45,30 @@ const tripSchema = new mongoose.Schema({
       required: true
     },
     originalName: String
+  }],
+  averageRating: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 5
+  },
+  totalReviews: {
+    type: Number,
+    default: 0
+  },
+  reviews: [{
+    userId: String,
+    rating: { 
+      type: Number, 
+      min: 1, 
+      max: 5,
+      required: true
+    },
+    comment: String,
+    createdAt: { 
+      type: Date, 
+      default: Date.now 
+    }
   }]
 }, {
   timestamps: true

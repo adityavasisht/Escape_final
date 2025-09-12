@@ -16,14 +16,18 @@ app.use(cors({
 app.options('/*', cors());
 
 // MongoDB Connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/escape')
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/escape', {
+  // Remove the unsupported options and use only these:
+  serverSelectionTimeoutMS: 50000, // Keep this - it's supported
+  socketTimeoutMS: 45000, // Optional: socket timeout
+  family: 4 // Use IPv4, skip trying IPv6
+})
 .then(() => {
-  console.log('✅ Connected to MongoDB');
+  console.log('✅ Connected to MongoDB successfully');
 })
 .catch((error) => {
   console.error('❌ MongoDB connection error:', error);
 });
-
 // Other middleware
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
