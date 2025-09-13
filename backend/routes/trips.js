@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const Trip = require('../models/Trip.js'); // Make sure this path is correct
+const BargainRequest = require('../models/BargainRequest.js');
+const Agency = require('../models/Agency.js');
 
 // Admin route - Get all trips for admin dashboard
 router.get('/admin/trips', async (req, res) => {
@@ -115,6 +117,8 @@ router.delete('/admin/trips/:tripId', async (req, res) => {
     });
   }
 });
+
+// Search trips route
 router.get('/search', async (req, res) => {
   try {
     const { query } = req.query;
@@ -154,6 +158,116 @@ router.get('/search', async (req, res) => {
       success: false,
       error: 'Failed to search trips',
       message: error.message
+    });
+  }
+});
+
+// FIXED: Get all agencies for dropdown - corrected field selection
+router.get('/agencies', async (req, res) => {
+  try {
+    console.log('📡 Fetching agencies for dropdown...');
+    
+    const agencies = await Agency.find({}).select('_id agencyName'); // Changed from 'name' to 'agencyName'
+    
+    console.log('✅ Found', agencies.length, 'agencies');
+    
+    res.json({
+      success: true,
+      agencies: agencies.map(agency => ({
+        id: agency._id,
+        name: agency.agencyName // Map to format expected by frontend
+      }))
+    });
+  } catch (error) {
+    console.error('❌ Error fetching agencies:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// UPDATED: Submit bargain request with all fields from form
+router.post('/bargain', async (req, res) => {
+  try {
+    console.log('📨 Bargain request received:', req.body);
+    
+    const { 
+      budget, 
+      startDate, 
+      endDate, 
+      destination, 
+      selectedAgencies, 
+      phoneNumber, 
+      taggedTrip 
+    } = req.body;
+    
+    // Validate required fields
+    if (!phoneNumber || !taggedTrip || !selectedAgencies || selectedAgencies.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Phone number, tagged trip, and at least one agency are required'
+      });
+    }
+
+    // Create bargain requests for each selected agency
+    const requests = [];
+    for (const agencyName of selectedAgencies) {
+      // Find agency by name to get ID
+      const agency = await Agency.findOne({ agencyName: agencyName });
+      if (agency) {
+        const request = new BargainRequest({
+          budget,
+          startDate,
+          endDate,
+          destination,
+          phoneNumber,
+          tripId: taggedTrip,
+          agencyId: agency._id,
+          userName: 'Anonymous User' // You might want to get this from Clerk user
+        });
+        
+        await request.save();
+        requests.push(request);
+      }
+    }
+    
+    console.log('✅ Created', requests.length, 'bargain requests');
+    
+    res.json({
+      success: true,
+      message: 'Bargain request submitted successfully',
+      requestsCreated: requests.length
+    });
+  } catch (error) {
+    console.error('❌ Error submitting bargain request:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Get bargain requests for an agency (for Manage Deals)
+router.get('/bargain/requests/:agencyId', async (req, res) => {
+  try {
+    console.log('📋 Fetching bargain requests for agency:', req.params.agencyId);
+    
+    const requests = await BargainRequest.find({ agencyId: req.params.agencyId })
+      .populate('tripId', 'tripName locations') // Populate trip details
+      .sort({ createdAt: -1 });
+    
+    console.log('✅ Found', requests.length, 'bargain requests');
+    
+    res.json({
+      success: true,
+      requests
+    });
+  } catch (error) {
+    console.error('❌ Error fetching bargain requests:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
     });
   }
 });

@@ -34,7 +34,11 @@ const tripSchema = new mongoose.Schema({
     default: 'active'
   },
   adminId: String,
-  agencyName: String,
+  agencyId: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: 'Agency',
+  required: true
+},
   itineraryImages: [{
     url: {
       type: String,
