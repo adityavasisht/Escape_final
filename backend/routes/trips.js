@@ -29,6 +29,25 @@ router.get('/admin/trips', async (req, res) => {
     });
   }
 });
+// TEMPORARY: Reset bargain requests collection
+router.delete('/reset-bargain-requests', async (req, res) => {
+  try {
+    await BargainRequest.collection.drop();
+    console.log('✅ Dropped BargainRequest collection');
+    
+    res.json({
+      success: true,
+      message: 'BargainRequest collection reset - new schema will be used'
+    });
+  } catch (error) {
+    console.error('Error resetting collection:', error);
+    res.json({
+      success: true,
+      message: 'Collection may not exist yet, ready for new schema'
+    });
+  }
+});
+
 
 // Public route - Get all active trips for homepage
 router.get('/public', async (req, res) => {
@@ -55,6 +74,67 @@ router.get('/public', async (req, res) => {
     });
   }
 });
+// DEBUG: Check what bargain requests exist
+router.get('/debug-bargain-requests', async (req, res) => {
+  try {
+    const allRequests = await BargainRequest.find({}).populate('tripId', 'tripName');
+    
+    console.log('🔍 All bargain requests in database:');
+    allRequests.forEach((req, index) => {
+      console.log(`${index + 1}. Customer ID: "${req.customerId}"`);
+      console.log(`   Customer Name: "${req.customerName}"`);
+      console.log(`   Customer Email: "${req.customerEmail}"`);
+      console.log(`   Trip: ${req.tripId?.tripName || 'Unknown'}`);
+      console.log(`   Status: ${req.status}`);
+      console.log(`   Created: ${req.createdAt}`);
+      console.log('   ---');
+    });
+    
+    res.json({
+      success: true,
+      totalRequests: allRequests.length,
+      requests: allRequests.map(req => ({
+        _id: req._id,
+        customerId: req.customerId,
+        customerName: req.customerName,
+        customerEmail: req.customerEmail,
+        tripName: req.tripId?.tripName,
+        status: req.status,
+        createdAt: req.createdAt
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+// DEBUG: Check current user ID
+router.get('/debug-user/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    console.log('🔍 Debug user check:');
+    console.log('User ID from URL:', userId);
+    
+    // Check what requests exist for this user
+    const userRequests = await BargainRequest.find({ customerId: userId });
+    console.log(`Found ${userRequests.length} requests for user ${userId}`);
+    
+    // Check what requests exist with similar patterns
+    const allCustomerIds = await BargainRequest.distinct('customerId');
+    console.log('All customer IDs in database:', allCustomerIds);
+    
+    res.json({
+      success: true,
+      userId: userId,
+      userRequests: userRequests.length,
+      allCustomerIds: allCustomerIds,
+      message: `Found ${userRequests.length} requests for user ${userId}`
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 
 // Public route - Get single trip details by ID
 router.get('/public/:tripId', async (req, res) => {
@@ -387,5 +467,441 @@ router.get('/agency-details/:agencyName', async (req, res) => {
     });
   }
 });
+// Fix agency names in existing trips
+router.post('/fix-trip-agency-names', async (req, res) => {
+  try {
+    const { adminId } = req.body;
+    console.log('🔧 Fixing trip agency names for admin:', adminId);
+    
+    // Find the admin's agency
+    const agency = await Agency.findOne({ ownerId: adminId });
+    
+    if (!agency) {
+      return res.status(404).json({
+        success: false,
+        error: 'No agency found for this admin'
+      });
+    }
+    
+    console.log('🏢 Found agency:', agency.name);
+    
+    // Update all trips for this admin to use correct agency name
+    const result = await Trip.updateMany(
+      { adminId: adminId },
+      { 
+        $set: { 
+          agencyName: agency.name,  // Set correct agency name
+          agencyId: adminId,        // Ensure agencyId matches
+          updatedAt: new Date()
+        } 
+      }
+    );
+    
+    console.log(`✅ Updated ${result.modifiedCount} trips with correct agency name`);
+    
+    res.json({
+      success: true,
+      message: `Updated ${result.modifiedCount} trips to use agency name: ${agency.name}`,
+      modifiedCount: result.modifiedCount,
+      agencyName: agency.name
+    });
+    
+  } catch (error) {
+    console.error('❌ Error fixing trip agency names:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+// Customer bargain request submission
+router.post('/customer-bargain', async (req, res) => {
+  try {
+    console.log('📨 Customer bargain request received:', req.body);
+    
+    const { 
+      budget, 
+      startDate, 
+      endDate, 
+      destination, 
+      selectedAgencies, 
+      phoneNumber, 
+      taggedTrip,
+      customerId,
+      customerName,
+      customerEmail
+    } = req.body;
+    
+    // Validate required fields
+    if (!phoneNumber || !taggedTrip || !selectedAgencies || !customerId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields'
+      });
+    }
+
+    const agencyName = selectedAgencies[0];
+    
+    // Find agency by name
+    const agency = await Agency.findOne({ name: agencyName });
+    if (!agency) {
+      return res.status(404).json({
+        success: false,
+        error: 'Selected agency not found'
+      });
+    }
+
+    // Find the trip
+    const trip = await Trip.findById(taggedTrip);
+    if (!trip) {
+      return res.status(404).json({
+        success: false,
+        error: 'Selected trip not found'
+      });
+    }
+
+    const request = new BargainRequest({
+      budget: parseFloat(budget),
+      startDate: new Date(startDate),
+      endDate: new Date(endDate),
+      destination,
+      phoneNumber,
+      tripId: taggedTrip,
+      agencyId: agency._id,
+      customerId,
+      customerName: customerName || 'Customer',
+      customerEmail: customerEmail || '',
+      userName: customerName || 'Customer',
+      status: 'pending',
+      createdAt: new Date()
+    });
+    
+    await request.save();
+    console.log('✅ Customer bargain request created');
+    
+    res.json({
+      success: true,
+      message: 'Bargain request submitted successfully',
+      requestId: request._id
+    });
+  } catch (error) {
+    console.error('❌ Error submitting customer bargain request:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Get customer's bargain requests
+router.get('/customer-bargains/:customerId', async (req, res) => {
+  try {
+    const { customerId } = req.params;
+    console.log('📋 Fetching bargain requests for customer:', customerId);
+    
+    const requests = await BargainRequest.find({ customerId })
+      .populate('tripId', 'tripName locations totalBudget')
+      .sort({ createdAt: -1 });
+    
+    console.log('✅ Found', requests.length, 'bargain requests');
+    
+    res.json({
+      success: true,
+      requests
+    });
+  } catch (error) {
+    console.error('❌ Error fetching customer bargains:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Cancel customer bargain request
+router.delete('/cancel-bargain/:requestId', async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { customerId } = req.body;
+    
+    console.log('🗑️ Cancelling bargain request:', requestId, 'for customer:', customerId);
+    
+    // Find and delete the request (only if it belongs to the customer)
+    const deletedRequest = await BargainRequest.findOneAndDelete({
+      _id: requestId,
+      customerId: customerId
+    });
+    
+    if (!deletedRequest) {
+      return res.status(404).json({
+        success: false,
+        error: 'Bargain request not found or you do not have permission to cancel it'
+      });
+    }
+    
+    console.log('✅ Bargain request cancelled successfully');
+    
+    res.json({
+      success: true,
+      message: 'Bargain request cancelled successfully'
+    });
+  } catch (error) {
+    console.error('❌ Error cancelling bargain request:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Update bargain request status (for admin)
+router.put('/bargain-status/:requestId', async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { status, adminId } = req.body;
+    
+    console.log('🔄 Updating bargain request status:', requestId, 'to', status);
+    
+    if (!['pending', 'waiting_list', 'rejected'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid status'
+      });
+    }
+    
+    // Find the request and verify admin owns the agency
+    const request = await BargainRequest.findById(requestId).populate('agencyId');
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        error: 'Bargain request not found'
+      });
+    }
+    
+    // Verify admin owns this agency
+    const agency = await Agency.findOne({ _id: request.agencyId, ownerId: adminId });
+    if (!agency) {
+      return res.status(403).json({
+        success: false,
+        error: 'You do not have permission to update this request'
+      });
+    }
+    
+    // Update status
+    request.status = status;
+    request.updatedAt = new Date();
+    await request.save();
+    
+    console.log('✅ Bargain request status updated');
+    
+    res.json({
+      success: true,
+      message: 'Request status updated successfully',
+      request
+    });
+  } catch (error) {
+    console.error('❌ Error updating bargain status:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+// Customer bargain request submission
+router.post('/customer-bargain', async (req, res) => {
+  try {
+    console.log('📨 Customer bargain request received:', req.body);
+    
+    const { 
+      budget, 
+      startDate, 
+      endDate, 
+      destination, 
+      selectedAgencies, 
+      phoneNumber, 
+      taggedTrip,
+      customerId,
+      customerName,
+      customerEmail
+    } = req.body;
+    
+    // Validate required fields
+    if (!phoneNumber || !taggedTrip || !selectedAgencies || !customerId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields'
+      });
+    }
+
+    const agencyName = selectedAgencies[0];
+    
+    // Find agency by name
+    const agency = await Agency.findOne({ name: agencyName });
+    if (!agency) {
+      return res.status(404).json({
+        success: false,
+        error: 'Selected agency not found'
+      });
+    }
+
+    // Find the trip
+    const trip = await Trip.findById(taggedTrip);
+    if (!trip) {
+      return res.status(404).json({
+        success: false,
+        error: 'Selected trip not found'
+      });
+    }
+
+    const request = new BargainRequest({
+      budget: parseFloat(budget),
+      startDate: new Date(startDate),
+      endDate: new Date(endDate),
+      destination,
+      phoneNumber,
+      tripId: taggedTrip,
+      agencyId: agency._id,
+      customerId,
+      customerName: customerName || 'Customer',
+      customerEmail: customerEmail || '',
+      userName: customerName || 'Customer',
+      status: 'pending',
+      createdAt: new Date()
+    });
+    
+    await request.save();
+    console.log('✅ Customer bargain request created');
+    
+    res.json({
+      success: true,
+      message: 'Bargain request submitted successfully',
+      requestId: request._id
+    });
+  } catch (error) {
+    console.error('❌ Error submitting customer bargain request:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Get customer's bargain requests
+router.get('/customer-bargains/:customerId', async (req, res) => {
+  try {
+    const { customerId } = req.params;
+    console.log('📋 Fetching bargain requests for customer:', customerId);
+    
+    const requests = await BargainRequest.find({ customerId })
+      .populate('tripId', 'tripName locations totalBudget')
+      .sort({ createdAt: -1 });
+    
+    console.log('✅ Found', requests.length, 'bargain requests for customer');
+    
+    res.json({
+      success: true,
+      requests
+    });
+  } catch (error) {
+    console.error('❌ Error fetching customer bargains:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Cancel customer bargain request
+router.delete('/cancel-bargain/:requestId', async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { customerId } = req.body;
+    
+    console.log('🗑️ Cancelling bargain request:', requestId, 'for customer:', customerId);
+    
+    // Find and delete the request (only if it belongs to the customer)
+    const deletedRequest = await BargainRequest.findOneAndDelete({
+      _id: requestId,
+      customerId: customerId
+    });
+    
+    if (!deletedRequest) {
+      return res.status(404).json({
+        success: false,
+        error: 'Bargain request not found or you do not have permission to cancel it'
+      });
+    }
+    
+    console.log('✅ Bargain request cancelled successfully');
+    
+    res.json({
+      success: true,
+      message: 'Bargain request cancelled successfully'
+    });
+  } catch (error) {
+    console.error('❌ Error cancelling bargain request:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Update bargain request status (for admin)
+router.put('/bargain-status/:requestId', async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { status, adminId } = req.body;
+    
+    console.log('🔄 Updating bargain request status:', requestId, 'to', status);
+    
+    if (!['pending', 'waiting_list', 'rejected'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid status'
+      });
+    }
+    
+    // Find the request and verify admin owns the agency
+    const request = await BargainRequest.findById(requestId).populate('agencyId');
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        error: 'Bargain request not found'
+      });
+    }
+    
+    // Verify admin owns this agency
+    const agency = await Agency.findOne({ _id: request.agencyId, ownerId: adminId });
+    if (!agency) {
+      return res.status(403).json({
+        success: false,
+        error: 'You do not have permission to update this request'
+      });
+    }
+    
+    // Update status
+    request.status = status;
+    request.updatedAt = new Date();
+    await request.save();
+    
+    console.log('✅ Bargain request status updated');
+    
+    res.json({
+      success: true,
+      message: 'Request status updated successfully',
+      request
+    });
+  } catch (error) {
+    console.error('❌ Error updating bargain status:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+
+
 
 module.exports = router;
