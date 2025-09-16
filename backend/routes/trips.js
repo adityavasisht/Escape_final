@@ -167,15 +167,17 @@ router.get('/agencies', async (req, res) => {
   try {
     console.log('📡 Fetching agencies for dropdown...');
     
-    const agencies = await Agency.find({}).select('_id agencyName'); // Changed from 'name' to 'agencyName'
+    // Get agencies with the correct field name from your schema
+    const agencies = await Agency.find({ status: 'active' }).select('_id name ownerName');
     
     console.log('✅ Found', agencies.length, 'agencies');
+    console.log('Sample agency:', agencies[0]); // Debug log
     
     res.json({
       success: true,
       agencies: agencies.map(agency => ({
         id: agency._id,
-        name: agency.agencyName // Map to format expected by frontend
+        name: agency.name || agency.ownerName // Use name field from your schema
       }))
     });
   } catch (error) {
@@ -210,34 +212,50 @@ router.post('/bargain', async (req, res) => {
       });
     }
 
-    // Create bargain requests for each selected agency
-    const requests = [];
-    for (const agencyName of selectedAgencies) {
-      // Find agency by name to get ID
-      const agency = await Agency.findOne({ agencyName: agencyName });
-      if (agency) {
-        const request = new BargainRequest({
-          budget,
-          startDate,
-          endDate,
-          destination,
-          phoneNumber,
-          tripId: taggedTrip,
-          agencyId: agency._id,
-          userName: 'Anonymous User' // You might want to get this from Clerk user
-        });
-        
-        await request.save();
-        requests.push(request);
-      }
-    }
+    // Create bargain request
+    const agencyName = selectedAgencies[0]; // Get the first (and only) agency
     
-    console.log('✅ Created', requests.length, 'bargain requests');
+    // Find agency by name to get ID
+    const agency = await Agency.findOne({ name: agencyName });
+    
+    if (!agency) {
+      return res.status(404).json({
+        success: false,
+        error: 'Selected agency not found'
+      });
+    }
+
+    // Find the trip to get trip details
+    const trip = await Trip.findById(taggedTrip);
+    
+    if (!trip) {
+      return res.status(404).json({
+        success: false,
+        error: 'Selected trip not found'
+      });
+    }
+
+    const request = new BargainRequest({
+      budget: parseFloat(budget),
+      startDate: new Date(startDate),
+      endDate: new Date(endDate),
+      destination,
+      phoneNumber,
+      tripId: taggedTrip,
+      agencyId: agency._id,
+      userName: 'Customer', // You can get this from Clerk user if available
+      status: 'pending',
+      createdAt: new Date()
+    });
+    
+    await request.save();
+    
+    console.log('✅ Created bargain request for agency:', agency.name);
     
     res.json({
       success: true,
       message: 'Bargain request submitted successfully',
-      requestsCreated: requests.length
+      requestId: request._id
     });
   } catch (error) {
     console.error('❌ Error submitting bargain request:', error);
@@ -247,27 +265,125 @@ router.post('/bargain', async (req, res) => {
     });
   }
 });
-
 // Get bargain requests for an agency (for Manage Deals)
-router.get('/bargain/requests/:agencyId', async (req, res) => {
+router.get('/bargain/requests/owner/:ownerId', async (req, res) => {
   try {
-    console.log('📋 Fetching bargain requests for agency:', req.params.agencyId);
+    const { ownerId } = req.params;
+    console.log('📋 Fetching bargain requests for agency owner:', ownerId);
     
-    const requests = await BargainRequest.find({ agencyId: req.params.agencyId })
-      .populate('tripId', 'tripName locations') // Populate trip details
+    // First find the agency owned by this user
+    const agency = await Agency.findOne({ ownerId: ownerId });
+    
+    if (!agency) {
+      return res.json({
+        success: true,
+        requests: [],
+        message: 'No agency found for this owner'
+      });
+    }
+    
+    // Then find bargain requests for this agency
+    const requests = await BargainRequest.find({ agencyId: agency._id })
+      .populate('tripId', 'tripName locations totalBudget') // Populate trip details
       .sort({ createdAt: -1 });
     
-    console.log('✅ Found', requests.length, 'bargain requests');
+    console.log('✅ Found', requests.length, 'bargain requests for agency:', agency.name);
     
     res.json({
       success: true,
-      requests
+      requests,
+      agencyName: agency.name
     });
   } catch (error) {
     console.error('❌ Error fetching bargain requests:', error);
     res.status(500).json({
       success: false,
       error: error.message
+    });
+  }
+});
+router.post('/create-agency', async (req, res) => {
+  try {
+    console.log('🏢 Creating new agency:', req.body);
+    
+    const { name, ownerId, ownerName, contactEmail, contactPhone, gstNumber, description, status } = req.body;
+    
+    // Check if agency already exists
+    const existingAgency = await Agency.findOne({ 
+      $or: [
+        { ownerId: ownerId },
+        { gstNumber: gstNumber }
+      ]
+    });
+    
+    if (existingAgency) {
+      return res.status(400).json({
+        success: false,
+        error: 'Agency with this owner or GST number already exists'
+      });
+    }
+    
+    const newAgency = new Agency({
+      name,
+      ownerId,
+      ownerName,
+      contactEmail,
+      contactPhone,
+      gstNumber,
+      description: description || '',
+      status: status || 'active'
+    });
+    
+    await newAgency.save();
+    
+    console.log('✅ Agency created successfully');
+    
+    res.json({
+      success: true,
+      message: 'Agency created successfully',
+      agency: newAgency
+    });
+    
+  } catch (error) {
+    console.error('❌ Error creating agency:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create agency',
+      message: error.message
+    });
+  }
+});
+router.get('/agency-details/:agencyName', async (req, res) => {
+  try {
+    console.log('🏢 Fetching agency details for:', req.params.agencyName);
+
+    const agencyName = decodeURIComponent(req.params.agencyName);
+
+    const agency = await Agency.findOne({ 
+      name: agencyName,
+      status: 'active' 
+    }).select('name contactEmail contactPhone gstNumber description ownerName status createdAt');
+
+    if (!agency) {
+      return res.status(404).json({
+        success: false,
+        error: 'Agency not found'
+      });
+    }
+
+    console.log('✅ Found agency details:', agency.name);
+
+    res.json({
+      success: true,
+      agency: agency
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching agency details:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch agency details',
+      message: error.message
     });
   }
 });

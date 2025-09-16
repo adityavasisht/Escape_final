@@ -1,43 +1,19 @@
 const mongoose = require('mongoose');
 
 const agencySchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true,
-    unique: true
-  },
-  ownerId: { // Link to Clerk user ID
-    type: String,
-    required: true,
-    unique: true // Each Clerk user can only have one agency
-  },
-  ownerName: {
-    type: String,
-    required: true
-  },
-  contactEmail: {
-    type: String,
-    required: true
-  },
-  contactPhone: {
-    type: String,
-    required: true
-  },
-  gstNumber: {
-    type: String,
-    required: true,
-    unique: true
-  },
-  description: String,
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  status: {
-    type: String,
-    enum: ['active', 'inactive', 'pending'],
-    default: 'active'
-  }
+  ownerId: { type: String, required: true },
+  ownerEmail: { type: String, required: true },
+  name: { type: String, required: true },
+  ownerName: { type: String, required: true },
+  phone: { type: String, required: true },
+  gstNumber: { type: String },
+  address: { type: String },
+  city: { type: String },
+  state: { type: String },
+  pincode: { type: String },
+  userType: { type: String, default: 'admin' }, // ← Add this
+  status: { type: String, default: 'active' },
+  createdAt: { type: Date, default: Date.now }
 });
 
 module.exports = mongoose.model('Agency', agencySchema);
