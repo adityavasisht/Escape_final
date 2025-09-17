@@ -15,9 +15,14 @@ const tripSchema = new mongoose.Schema({
   maxCapacity: { type: Number, required: true },
   currentBookings: { type: Number, default: 0 },
   status: { type: String, default: 'active' },
-  adminId: { type: String, required: true }, // ← Keep this as required
-  agencyId: { type: String }, // ← REMOVE 'required: true' - make it optional
+  adminId: { type: String, required: true },
+  agencyId: { type: String },
   agencyName: { type: String },
+  tripOTP: {
+    type: String,
+    required: true,
+    unique: true
+  },
   itineraryImages: [{
     url: String,
     publicId: String,
@@ -25,6 +30,13 @@ const tripSchema = new mongoose.Schema({
   }],
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
+});
+
+tripSchema.pre('save', function(next) {
+  if (this.isNew) {
+    this.tripOTP = Math.floor(1000 + Math.random() * 9000).toString();
+  }
+  next();
 });
 
 module.exports = mongoose.model('Trip', tripSchema);
