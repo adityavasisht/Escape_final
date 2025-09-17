@@ -268,10 +268,11 @@ router.put('/profile/:ownerId', async (req, res) => {
   }
 });
 
-// CORRECTED Trip creation route - FINAL VERSION WITH PERFECT ADMIN ISOLATION
+// ✅ FIXED TRIP CREATION ROUTE WITH PROPER OTP HANDLING
 router.post('/trips', upload.array('itineraryImages', 10), async (req, res) => {
-  console.log('🎯 Creating trip with perfect admin isolation');
-  console.log('📦 Admin ID from request:', req.body.adminId);
+  console.log('🎯 Creating trip with OTP handling');
+  console.log('📦 Request body:', req.body);
+  console.log('📸 Files uploaded:', req.files?.length || 0);
   
   try {
     const imageUrls = [];
@@ -337,7 +338,8 @@ router.post('/trips', upload.array('itineraryImages', 10), async (req, res) => {
       inclusions,
       exclusions,
       maxCapacity,
-      adminId
+      adminId,
+      tripOTP // ✅ EXTRACT OTP FROM REQUEST
     } = req.body;
     
     // STRICT VALIDATION for admin ID
@@ -346,6 +348,42 @@ router.post('/trips', upload.array('itineraryImages', 10), async (req, res) => {
         success: false,
         error: 'Valid admin ID is required for trip creation'
       });
+    }
+
+    // ✅ VALIDATE OTP
+    if (!tripOTP || typeof tripOTP !== 'string' || tripOTP.trim() === '') {
+      return res.status(400).json({
+        success: false,
+        error: 'Trip OTP is required for trip creation'
+      });
+    }
+
+    // Check if OTP already exists (ensure uniqueness)
+    const existingTripWithOTP = await Trip.findOne({ tripOTP: tripOTP.trim() });
+    if (existingTripWithOTP) {
+      // Generate a new unique OTP if conflict
+      let uniqueOTP;
+      let attempts = 0;
+      
+      do {
+        uniqueOTP = Math.floor(1000 + Math.random() * 9000).toString();
+        const existing = await Trip.findOne({ tripOTP: uniqueOTP });
+        attempts++;
+        
+        if (!existing) {
+          console.log(`✅ Generated unique OTP: ${uniqueOTP} (attempt ${attempts})`);
+          break;
+        }
+      } while (attempts < 50);
+      
+      if (attempts >= 50) {
+        return res.status(500).json({
+          success: false,
+          error: 'Unable to generate unique OTP. Please try again.'
+        });
+      }
+      
+      req.body.tripOTP = uniqueOTP; // Update the OTP
     }
 
     // Validate other required fields
@@ -357,7 +395,10 @@ router.post('/trips', upload.array('itineraryImages', 10), async (req, res) => {
     }
 
     const cleanAdminId = adminId.trim();
+    const cleanTripOTP = (req.body.tripOTP || tripOTP).trim();
+    
     console.log('✅ Creating trip for admin:', cleanAdminId);
+    console.log('✅ Trip OTP:', cleanTripOTP);
 
     // Get agency name (optional - for display purposes)
     let agencyName = 'Travel Agency';
@@ -373,10 +414,10 @@ router.post('/trips', upload.array('itineraryImages', 10), async (req, res) => {
     
     console.log('💾 Creating trip with:');
     console.log('- adminId:', cleanAdminId);
-    console.log('- agencyId:', cleanAdminId);
+    console.log('- tripOTP:', cleanTripOTP);
     console.log('- agencyName:', agencyName);
     
-    // Create and SAVE the trip to database with STRICT admin ID
+    // ✅ CREATE TRIP WITH OTP
     const newTrip = new Trip({
       tripName: tripName.toString().trim(),
       totalBudget: parseFloat(totalBudget),
@@ -392,28 +433,50 @@ router.post('/trips', upload.array('itineraryImages', 10), async (req, res) => {
       maxCapacity: parseInt(maxCapacity),
       currentBookings: 0,
       status: 'active',
-      adminId: cleanAdminId,        // STRICT: Exact admin ID
-      agencyId: cleanAdminId,       // Using adminId for schema compliance
+      adminId: cleanAdminId,
+      agencyId: cleanAdminId,
       agencyName: agencyName,
+      tripOTP: cleanTripOTP, // ✅ SET THE OTP HERE
       itineraryImages: imageUrls,
       createdAt: new Date(),
       updatedAt: new Date()
     });
     
     const savedTrip = await newTrip.save();
-    console.log('✅ Trip SAVED with admin isolation:', savedTrip._id);
-    console.log('✅ Trip adminId confirmed:', savedTrip.adminId);
+    console.log('✅ Trip SAVED successfully:', savedTrip._id);
+    console.log('✅ Trip OTP confirmed:', savedTrip.tripOTP);
     
     res.status(201).json({
       success: true,
       trip: savedTrip,
-      message: `Trip "${tripName}" created successfully for admin ${cleanAdminId}`,
+      message: `Trip "${tripName}" created successfully with OTP: ${cleanTripOTP}`,
       adminId: cleanAdminId,
+      tripOTP: savedTrip.tripOTP,
       imageCount: imageUrls.length
     });
     
   } catch (error) {
-    console.error('❌ Trip creation error:', error.message);
+    console.error('❌ Trip creation error:', error);
+    
+    // Handle validation errors specifically
+    if (error.name === 'ValidationError') {
+      console.error('❌ Validation error details:', error.errors);
+      return res.status(400).json({
+        success: false,
+        error: `Validation failed: ${error.message}`,
+        details: error.errors
+      });
+    }
+    
+    // Handle duplicate key errors
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern)[0];
+      return res.status(400).json({
+        success: false,
+        error: `Duplicate ${field}: This ${field} already exists`
+      });
+    }
+    
     res.status(500).json({
       success: false,
       error: error.message || 'Internal server error while creating trip'
@@ -452,6 +515,7 @@ router.get('/trips', async (req, res) => {
     // Debug: Show admin IDs of found trips
     if (trips.length > 0) {
       console.log('🔍 Trip admin IDs:', trips.map(t => t.adminId));
+      console.log('🔍 Trip OTPs:', trips.map(t => t.tripOTP));
     }
     
     res.json({
@@ -499,7 +563,7 @@ router.get('/trips/:id', async (req, res) => {
       });
     }
     
-    console.log(`✅ Trip found: ${trip.tripName} (Admin: ${trip.adminId})`);
+    console.log(`✅ Trip found: ${trip.tripName} (Admin: ${trip.adminId}, OTP: ${trip.tripOTP})`);
     
     res.json({
       success: true,
@@ -599,6 +663,9 @@ router.put('/trips/:id', upload.array('itineraryImages', 10), async (req, res) =
       maxCapacity: parseInt(req.body.maxCapacity),
       updatedAt: new Date()
     };
+    
+    // Don't update OTP during trip updates - keep original
+    // The OTP should remain the same for the life of the trip
     
     // Handle image replacement
     if (imageUrls.length > 0) {
@@ -899,6 +966,7 @@ router.get('/debug-all-trips', async (req, res) => {
       console.log(`   - Admin ID: "${trip.adminId}"`);
       console.log(`   - Agency ID: "${trip.agencyId}"`);
       console.log(`   - Agency Name: "${trip.agencyName}"`);
+      console.log(`   - Trip OTP: "${trip.tripOTP}"`);
       console.log(`   - Status: ${trip.status}`);
       console.log(`   - Locations: ${trip.locations?.join(', ')}`);
       console.log(`   - Created: ${trip.createdAt}`);
@@ -915,6 +983,7 @@ router.get('/debug-all-trips', async (req, res) => {
         adminId: trip.adminId,
         agencyId: trip.agencyId,
         agencyName: trip.agencyName,
+        tripOTP: trip.tripOTP,
         status: trip.status,
         locations: trip.locations,
         createdAt: trip.createdAt
@@ -1007,6 +1076,6 @@ router.post('/fix-trip-admin-ids', async (req, res) => {
   }
 });
 
-console.log('✅ Admin routes configured with perfect admin isolation');
+console.log('✅ Admin routes configured with perfect admin isolation and OTP handling');
 
 module.exports = router;

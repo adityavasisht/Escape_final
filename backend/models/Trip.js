@@ -1,42 +1,107 @@
 const mongoose = require('mongoose');
 
 const tripSchema = new mongoose.Schema({
-  tripName: { type: String, required: true },
-  totalBudget: { type: Number, required: true },
-  locations: [{ type: String, required: true }],
-  departureDateTime: { type: Date },
-  transportMedium: { type: String },
-  departureLocation: { type: String },
-  arrivalDateTime: { type: Date },
-  arrivalLocation: { type: String },
-  description: { type: String },
-  inclusions: { type: String },
-  exclusions: { type: String },
-  maxCapacity: { type: Number, required: true },
-  currentBookings: { type: Number, default: 0 },
-  status: { type: String, default: 'active' },
-  adminId: { type: String, required: true },
-  agencyId: { type: String },
-  agencyName: { type: String },
-  tripOTP: {
+  tripName: {
     type: String,
     required: true,
-    unique: true
+    trim: true
+  },
+  totalBudget: {
+    type: Number,
+    required: true,
+    min: 0
+  },
+  locations: [{
+    type: String,
+    required: true
+  }],
+  departureDateTime: {
+    type: Date
+  },
+  arrivalDateTime: {
+    type: Date
+  },
+  transportMedium: {
+    type: String,
+    enum: ['bus', 'train', 'flight', 'car', 'boat', 'mixed', 'Not specified'],
+    default: 'Not specified'
+  },
+  departureLocation: {
+    type: String,
+    default: 'Not specified'
+  },
+  arrivalLocation: {
+    type: String,
+    default: 'Not specified'
+  },
+  description: {
+    type: String,
+    default: ''
+  },
+  inclusions: {
+    type: String,
+    default: ''
+  },
+  exclusions: {
+    type: String,
+    default: ''
+  },
+  maxCapacity: {
+    type: Number,
+    required: true,
+    min: 1
+  },
+  currentBookings: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  status: {
+    type: String,
+    enum: ['active', 'inactive', 'completed', 'cancelled'],
+    default: 'active'
+  },
+  adminId: {
+    type: String,
+    required: true,
+    index: true
+  },
+  agencyId: {
+    type: String,
+    required: true
+  },
+  agencyName: {
+    type: String,
+    default: 'Travel Agency'
+  },
+  // ✅ FIXED OTP FIELD - NOT REQUIRED IN SCHEMA
+  tripOTP: {
+    type: String,
+    unique: true,
+    sparse: true // Allows for null/undefined values while maintaining uniqueness for non-null values
   },
   itineraryImages: [{
-    url: String,
-    publicId: String,
-    originalName: String
-  }],
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
+    url: {
+      type: String,
+      required: true
+    },
+    publicId: {
+      type: String
+    },
+    originalName: {
+      type: String
+    }
+  }]
+}, {
+  timestamps: true
 });
 
-tripSchema.pre('save', function(next) {
-  if (this.isNew) {
-    this.tripOTP = Math.floor(1000 + Math.random() * 9000).toString();
-  }
-  next();
-});
+// ✅ REMOVE THE PRE-SAVE HOOK - Let the backend handle OTP generation
+// No pre-save hook for OTP generation since frontend is handling it
+
+// Add indexes for better performance
+tripSchema.index({ adminId: 1, status: 1 });
+tripSchema.index({ tripOTP: 1 }, { sparse: true });
+tripSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model('Trip', tripSchema);
