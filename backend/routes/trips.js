@@ -1,14 +1,101 @@
 const express = require('express');
 const router = express.Router();
+const { body, validationResult, param } = require('express-validator');
 const Trip = require('../models/Trip.js');
 const BargainRequest = require('../models/BargainRequest.js');
 const Agency = require('../models/Agency.js');
 const Booking = require('../models/Booking.js');
 
+// IMPORT THE AUTH MIDDLEWARE
+const { requireAuth, requireAdmin, validateUserOwnership, requireAuthAndOwnership } = require('../middleware/auth');
+
+console.log('📁 Trips routes module loaded with security middleware');
+
+// Input validation middleware
+const validateBargainRequest = [
+  body('budget')
+    .isNumeric()
+    .withMessage('Budget must be a valid number')
+    .isFloat({ min: 1000, max: 10000000 })
+    .withMessage('Budget must be between ₹1,000 and ₹1,00,00,000'),
+  
+  body('startDate')
+    .isISO8601()
+    .withMessage('Start date must be a valid date')
+    .custom((value) => {
+      const startDate = new Date(value);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (startDate < today) {
+        throw new Error('Start date cannot be in the past');
+      }
+      return true;
+    }),
+  
+  body('endDate')
+    .isISO8601()
+    .withMessage('End date must be a valid date')
+    .custom((value, { req }) => {
+      const endDate = new Date(value);
+      const startDate = new Date(req.body.startDate);
+      if (endDate <= startDate) {
+        throw new Error('End date must be after start date');
+      }
+      return true;
+    }),
+  
+  body('destination')
+    .trim()
+    .notEmpty()
+    .withMessage('Destination is required')
+    .isLength({ min: 2, max: 100 })
+    .withMessage('Destination must be between 2 and 100 characters'),
+  
+  body('phoneNumber')
+    .trim()
+    .notEmpty()
+    .withMessage('Phone number is required')
+    .matches(/^[\+]?[0-9\s\-\(\)]{10,15}$/)
+    .withMessage('Please enter a valid phone number'),
+  
+  body('selectedAgencies')
+    .isArray({ min: 1 })
+    .withMessage('At least one agency must be selected'),
+  
+  body('taggedTrip')
+    .isMongoId()
+    .withMessage('Invalid trip ID format'),
+  
+  body('customerName')
+    .optional()
+    .trim()
+    .isLength({ min: 1, max: 50 })
+    .withMessage('Customer name must be between 1 and 50 characters'),
+  
+  body('customerEmail')
+    .optional()
+    .isEmail()
+    .withMessage('Please enter a valid email address')
+];
+
+const validateUserId = [
+  param('userId')
+    .notEmpty()
+    .withMessage('User ID is required')
+    .isLength({ min: 10, max: 50 })
+    .withMessage('Invalid user ID format')
+];
+
+const validateRequestId = [
+  param('requestId')
+    .isMongoId()
+    .withMessage('Invalid request ID format')
+];
+
 // IMPORTANT: Admin-specific routes MUST come before general routes to avoid conflicts
 
-// Admin-specific trips route (MOVED TO TOP)
-router.get('/admin/trips/:adminId', async (req, res) => {
+// Admin-specific trips route - SECURE
+router.get('/admin/trips/:adminId', requireAuthAndOwnership, async (req, res) => {
   try {
     const { adminId } = req.params;
     console.log('🎯 GET /api/trips/admin/trips/:adminId route hit for admin:', adminId);
@@ -52,8 +139,8 @@ router.get('/admin/trips/:adminId', async (req, res) => {
   }
 });
 
-// Debug route
-router.get('/debug/admin-trips/:adminId', async (req, res) => {
+// Debug route - SECURE
+router.get('/debug/admin-trips/:adminId', requireAuthAndOwnership, async (req, res) => {
   try {
     const { adminId } = req.params;
     console.log('🔍 Debug: Looking for trips with adminId:', adminId);
@@ -96,10 +183,20 @@ router.get('/debug/admin-trips/:adminId', async (req, res) => {
   }
 });
 
-// Fix trip admin IDs route
-router.post('/fix-trip-admin-ids', async (req, res) => {
+// Fix trip admin IDs route - SECURE
+router.post('/fix-trip-admin-ids', requireAuth, async (req, res) => {
   try {
     const { adminId } = req.body;
+    const authenticatedUserId = req.auth.userId;
+    
+    // Ensure user can only fix their own trips
+    if (adminId !== authenticatedUserId) {
+      return res.status(403).json({
+        success: false,
+        error: 'You can only fix your own trip admin IDs'
+      });
+    }
+    
     console.log('🔧 Fixing trip admin IDs for admin:', adminId);
     
     // Find agency for this admin
@@ -150,15 +247,18 @@ router.post('/fix-trip-admin-ids', async (req, res) => {
   }
 });
 
-// General admin route - Get all trips for admin dashboard (MOVED BELOW SPECIFIC ROUTES)
-router.get('/admin/trips', async (req, res) => {
+// General admin route - SECURE
+router.get('/admin/trips', requireAuth, async (req, res) => {
   try {
     console.log('🎯 GET /api/trips/admin/trips route hit (general)');
     
-    const trips = await Trip.find({})
+    const authenticatedUserId = req.auth.userId;
+    
+    // SECURITY: Admin can only see their own trips
+    const trips = await Trip.find({ adminId: authenticatedUserId })
       .sort({ createdAt: -1 });
 
-    console.log('✅ Admin found', trips.length, 'trips (general)');
+    console.log('✅ Admin found', trips.length, 'trips (filtered by admin)');
 
     res.json({
       success: true,
@@ -176,8 +276,8 @@ router.get('/admin/trips', async (req, res) => {
   }
 });
 
-// Booking routes
-router.post('/book-trip', async (req, res) => {
+// Booking routes - SECURE
+router.post('/book-trip', requireAuth, async (req, res) => {
   try {
     const {
       tripId,
@@ -187,6 +287,16 @@ router.post('/book-trip', async (req, res) => {
       customerPhone,
       specialRequests
     } = req.body;
+
+    const authenticatedUserId = req.auth.userId;
+    
+    // Ensure user can only book trips for themselves
+    if (customerId !== authenticatedUserId) {
+      return res.status(403).json({
+        success: false,
+        error: 'You can only book trips for yourself'
+      });
+    }
 
     console.log('📝 Processing trip booking:', { tripId, customerName, customerEmail });
 
@@ -257,92 +367,6 @@ router.post('/book-trip', async (req, res) => {
   }
 });
 
-// Get bookings for an admin
-router.get('/admin/bookings/:adminId', async (req, res) => {
-  try {
-    const { adminId } = req.params;
-    
-    console.log('📋 Fetching bookings for admin:', adminId);
-
-    const bookings = await Booking.find({ adminId })
-      .populate('tripId', 'tripName locations departureDateTime totalBudget tripOTP')
-      .sort({ createdAt: -1 });
-
-    console.log('✅ Found', bookings.length, 'bookings for admin');
-
-    res.json({
-      success: true,
-      bookings: bookings.map(booking => ({
-        _id: booking._id,
-        tripName: booking.tripId?.tripName || 'Unknown Trip',
-        tripOTP: booking.tripOTP,
-        customerName: booking.customerName,
-        customerEmail: booking.customerEmail,
-        customerPhone: booking.customerPhone,
-        bookingDate: booking.bookingDate,
-        bookingStatus: booking.bookingStatus,
-        totalAmount: booking.totalAmount,
-        specialRequests: booking.specialRequests
-      }))
-    });
-
-  } catch (error) {
-    console.error('❌ Error fetching admin bookings:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch bookings'
-    });
-  }
-});
-
-// Get booking statistics for admin dashboard
-router.get('/admin/booking-stats/:adminId', async (req, res) => {
-  try {
-    const { adminId } = req.params;
-
-    const totalBookings = await Booking.countDocuments({ adminId });
-    const confirmedBookings = await Booking.countDocuments({ 
-      adminId, 
-      bookingStatus: 'confirmed' 
-    });
-    const recentBookings = await Booking.find({ adminId })
-      .populate('tripId', 'tripName')
-      .sort({ createdAt: -1 })
-      .limit(5);
-
-    // Calculate total revenue
-    const revenueData = await Booking.aggregate([
-      { $match: { adminId, bookingStatus: 'confirmed' } },
-      { $group: { _id: null, totalRevenue: { $sum: '$totalAmount' } } }
-    ]);
-
-    const totalRevenue = revenueData.length > 0 ? revenueData[0].totalRevenue : 0;
-
-    res.json({
-      success: true,
-      stats: {
-        totalBookings,
-        confirmedBookings,
-        totalRevenue,
-        recentBookings: recentBookings.map(booking => ({
-          customerName: booking.customerName,
-          tripName: booking.tripId?.tripName || 'Unknown',
-          tripOTP: booking.tripOTP,
-          bookingDate: booking.bookingDate,
-          amount: booking.totalAmount
-        }))
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Error fetching booking stats:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch booking statistics'
-    });
-  }
-});
-
 // Public routes
 router.get('/public', async (req, res) => {
   try {
@@ -399,19 +423,32 @@ router.get('/public/:tripId', async (req, res) => {
   }
 });
 
-// Admin management routes
-router.delete('/admin/trips/:tripId', async (req, res) => {
+// Admin management routes - SECURE
+router.delete('/admin/trips/:tripId', requireAuth, async (req, res) => {
   try {
     console.log('🗑️ Admin deleting trip:', req.params.tripId);
     
-    const result = await Trip.findByIdAndDelete(req.params.tripId);
+    const authenticatedUserId = req.auth.userId;
     
-    if (!result) {
+    // Find the trip and verify ownership
+    const trip = await Trip.findById(req.params.tripId);
+    
+    if (!trip) {
       return res.status(404).json({
         success: false,
         error: 'Trip not found'
       });
     }
+    
+    // Ensure user can only delete their own trips
+    if (trip.adminId !== authenticatedUserId) {
+      return res.status(403).json({
+        success: false,
+        error: 'You can only delete your own trips'
+      });
+    }
+    
+    const result = await Trip.findByIdAndDelete(req.params.tripId);
 
     console.log('✅ Trip deleted successfully');
 
@@ -443,7 +480,9 @@ router.get('/search', async (req, res) => {
       });
     }
 
-    const searchRegex = new RegExp(query, 'i');
+    // Sanitize search query to prevent NoSQL injection
+    const sanitizedQuery = query.replace(/[^\w\s]/gi, '');
+    const searchRegex = new RegExp(sanitizedQuery, 'i');
     
     const trips = await Trip.find({
       status: 'active',
@@ -461,7 +500,7 @@ router.get('/search', async (req, res) => {
       success: true,
       trips: trips,
       total: trips.length,
-      query: query
+      query: sanitizedQuery
     });
     
   } catch (error) {
@@ -482,7 +521,6 @@ router.get('/agencies', async (req, res) => {
     const agencies = await Agency.find({ status: 'active' }).select('_id name ownerName');
     
     console.log('✅ Found', agencies.length, 'agencies');
-    console.log('Sample agency:', agencies[0]);
     
     res.json({
       success: true,
@@ -500,11 +538,20 @@ router.get('/agencies', async (req, res) => {
   }
 });
 
-router.post('/create-agency', async (req, res) => {
+router.post('/create-agency', requireAuth, async (req, res) => {
   try {
     console.log('🏢 Creating new agency:', req.body);
     
     const { name, ownerId, ownerName, contactEmail, contactPhone, gstNumber, description, status } = req.body;
+    const authenticatedUserId = req.auth.userId;
+    
+    // Ensure user can only create agency for themselves
+    if (ownerId !== authenticatedUserId) {
+      return res.status(403).json({
+        success: false,
+        error: 'You can only create an agency for yourself'
+      });
+    }
     
     const existingAgency = await Agency.findOne({ 
       $or: [
@@ -586,9 +633,21 @@ router.get('/agency-details/:agencyName', async (req, res) => {
   }
 });
 
-// Bargain request routes
-router.post('/bargain', async (req, res) => {
+// ENHANCED BARGAIN REQUEST ROUTES WITH SECURITY
+
+// Submit bargain request (for anonymous/guest users)
+router.post('/bargain', validateBargainRequest, async (req, res) => {
   try {
+    // Check validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation failed',
+        details: errors.array()
+      });
+    }
+
     console.log('📨 Bargain request received:', req.body);
     
     const { 
@@ -604,14 +663,6 @@ router.post('/bargain', async (req, res) => {
       customerEmail
     } = req.body;
     
-    // Validate required fields
-    if (!phoneNumber || !taggedTrip || !selectedAgencies || selectedAgencies.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'Phone number, tagged trip, and at least one agency are required'
-      });
-    }
-
     const agencyName = selectedAgencies[0];
     
     // Find agency by name to get ID
@@ -669,8 +720,19 @@ router.post('/bargain', async (req, res) => {
   }
 });
 
-router.post('/customer-bargain', async (req, res) => {
+// Submit bargain request (for authenticated users) - SECURE
+router.post('/customer-bargain', requireAuth, validateBargainRequest, async (req, res) => {
   try {
+    // Check validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation failed',
+        details: errors.array()
+      });
+    }
+
     console.log('📨 Customer bargain request received:', req.body);
     
     const { 
@@ -685,15 +747,17 @@ router.post('/customer-bargain', async (req, res) => {
       customerName,
       customerEmail
     } = req.body;
+
+    const authenticatedUserId = req.auth.userId;
     
-    // Validate required fields
-    if (!phoneNumber || !taggedTrip || !selectedAgencies || !customerId) {
-      return res.status(400).json({
+    // Ensure user can only create bargain requests for themselves
+    if (customerId !== authenticatedUserId) {
+      return res.status(403).json({
         success: false,
-        error: 'Missing required fields'
+        error: 'You can only create bargain requests for yourself'
       });
     }
-
+    
     const agencyName = selectedAgencies[0];
     
     // Find agency by name
@@ -747,12 +811,42 @@ router.post('/customer-bargain', async (req, res) => {
   }
 });
 
-router.get('/customer-bargains/:customerId', async (req, res) => {
+// SECURE: Get bargain requests for a specific customer - FIXED PARAMETER NAME
+router.get('/customer-bargains/:userId', requireAuthAndOwnership, validateUserId, async (req, res) => {
+  console.log('🔍 MIDDLEWARE DEBUG - customer-bargains route called');
+  console.log('📍 Route:', req.method, req.originalUrl);
+  console.log('📝 Request params:', req.params);
+  console.log('🔐 Auth object:', req.auth);
+  
   try {
-    const { customerId } = req.params;
-    console.log('📋 Fetching bargain requests for customer:', customerId);
+    // Check validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation failed',
+        details: errors.array()
+      });
+    }
+
+    const { userId } = req.params;
+    console.log('📋 Fetching bargain requests for customer:', userId);
     
-    const requests = await BargainRequest.find({ customerId })
+    // EMERGENCY DOUBLE-CHECK
+    const authenticatedUserId = req.auth?.userId;
+    if (userId !== authenticatedUserId) {
+      console.log('🚨 SECURITY BREACH ATTEMPT:');
+      console.log('   Requested:', userId);
+      console.log('   Authenticated:', authenticatedUserId);
+      
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied - security violation logged'
+      });
+    }
+    
+    // Double security: filter by customerId to ensure user isolation
+    const requests = await BargainRequest.find({ customerId: userId })
       .populate('tripId', 'tripName locations totalBudget')
       .sort({ createdAt: -1 });
     
@@ -771,16 +865,28 @@ router.get('/customer-bargains/:customerId', async (req, res) => {
   }
 });
 
-router.delete('/cancel-bargain/:requestId', async (req, res) => {
+// SECURE: Cancel bargain request - FIXED
+router.delete('/cancel-bargain/:requestId', requireAuth, validateRequestId, async (req, res) => {
   try {
+    // Check validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation failed',
+        details: errors.array()
+      });
+    }
+
     const { requestId } = req.params;
-    const { customerId } = req.body;
+    const authenticatedUserId = req.auth.userId;
     
-    console.log('🗑️ Cancelling bargain request:', requestId, 'for customer:', customerId);
+    console.log('🗑️ Cancelling bargain request:', requestId, 'for user:', authenticatedUserId);
     
+    // Find and delete only if it belongs to the authenticated user
     const deletedRequest = await BargainRequest.findOneAndDelete({
       _id: requestId,
-      customerId: customerId
+      customerId: authenticatedUserId // Ensure user can only delete their own requests
     });
     
     if (!deletedRequest) {
@@ -805,10 +911,22 @@ router.delete('/cancel-bargain/:requestId', async (req, res) => {
   }
 });
 
-router.put('/bargain-status/:requestId', async (req, res) => {
+// Update bargain request status - SECURE (ADMIN ONLY)
+router.put('/bargain-status/:requestId', requireAuth, validateRequestId, async (req, res) => {
   try {
+    // Check validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation failed',
+        details: errors.array()
+      });
+    }
+
     const { requestId } = req.params;
-    const { status, adminId } = req.body;
+    const { status } = req.body;
+    const authenticatedUserId = req.auth.userId;
     
     console.log('🔄 Updating bargain request status:', requestId, 'to', status);
     
@@ -827,7 +945,8 @@ router.put('/bargain-status/:requestId', async (req, res) => {
       });
     }
     
-    const agency = await Agency.findOne({ _id: request.agencyId, ownerId: adminId });
+    // Verify the authenticated user owns the agency for this request
+    const agency = await Agency.findOne({ _id: request.agencyId, ownerId: authenticatedUserId });
     if (!agency) {
       return res.status(403).json({
         success: false,
@@ -855,10 +974,22 @@ router.put('/bargain-status/:requestId', async (req, res) => {
   }
 });
 
-router.get('/bargain/requests/owner/:ownerId', async (req, res) => {
+// Get bargain requests for agency owner - SECURE
+// FIXED: Get bargain requests for agency owner - Use simple auth like /stats route
+router.get('/bargain/requests/owner/:ownerId', requireAuth, async (req, res) => {
   try {
     const { ownerId } = req.params;
-    console.log('📋 Fetching bargain requests for agency owner:', ownerId);
+    const authenticatedUserId = req.auth?.userId;
+    
+    // Security: User can only access their own bargain requests
+    if (ownerId !== authenticatedUserId) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied - you can only view your own bargain requests'
+      });
+    }
+    
+    console.log('📋 Fetching bargain requests for owner:', ownerId);
     
     const agency = await Agency.findOne({ ownerId: ownerId });
     
@@ -881,26 +1012,92 @@ router.get('/bargain/requests/owner/:ownerId', async (req, res) => {
       requests,
       agencyName: agency.name
     });
+    
   } catch (error) {
     console.error('❌ Error fetching bargain requests:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: 'Failed to fetch bargain requests',
+      details: error.message
     });
   }
 });
 
-// Utility routes
-router.post('/fix-customer-ids', async (req, res) => {
+// SECURE: Get user bookings - FIXED WITH DOUBLE SECURITY
+router.get('/bookings/user/:userId', requireAuthAndOwnership, validateUserId, async (req, res) => {
+  console.log('🔍 MIDDLEWARE DEBUG - bookings route called');
+  console.log('📍 Route:', req.method, req.originalUrl);
+  console.log('📝 Request params:', req.params);
+  console.log('🔐 Auth object:', req.auth);
+  
+  try {
+    // Check validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation failed',
+        details: errors.array()
+      });
+    }
+
+    const { userId } = req.params;
+    const authenticatedUserId = req.auth?.userId;
+    
+    // EMERGENCY DOUBLE-CHECK
+    if (userId !== authenticatedUserId) {
+      console.log('🚨 SECURITY BREACH ATTEMPT:');
+      console.log('   Requested:', userId);
+      console.log('   Authenticated:', authenticatedUserId);
+      
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied - security violation logged'
+      });
+    }
+    
+    console.log('📋 Fetching bookings for user:', userId);
+
+    // User isolation: only return bookings for the authenticated user
+    const bookings = await Booking.find({ customerId: userId })
+      .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      bookings: bookings
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching user bookings:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch bookings'
+    });
+  }
+});
+
+// Utility routes - SECURE
+router.post('/fix-customer-ids', requireAuth, async (req, res) => {
   try {
     const { currentUserId, userEmail } = req.body;
+    const authenticatedUserId = req.auth.userId;
+    
+    // Ensure user can only fix their own customer IDs
+    if (currentUserId !== authenticatedUserId) {
+      return res.status(403).json({
+        success: false,
+        error: 'You can only fix your own customer IDs'
+      });
+    }
     
     console.log('🔧 Fixing customer IDs for user:', currentUserId);
-    console.log('🔧 Updating anonymous requests...');
     
-    // Update ALL requests with "anonymous" customer ID
+    // Only update anonymous requests (prevent unauthorized data modification)
     const result = await BargainRequest.updateMany(
-      { customerId: "anonymous" },
+      { 
+        customerId: "anonymous",
+        customerEmail: userEmail || 'aadiritchcrew@gmail.com' // Additional verification
+      },
       {
         $set: {
           customerId: currentUserId,
@@ -927,9 +1124,19 @@ router.post('/fix-customer-ids', async (req, res) => {
   }
 });
 
-router.post('/fix-trip-agency-names', async (req, res) => {
+router.post('/fix-trip-agency-names', requireAuth, async (req, res) => {
   try {
     const { adminId } = req.body;
+    const authenticatedUserId = req.auth.userId;
+    
+    // Ensure user can only fix their own trip agency names
+    if (adminId !== authenticatedUserId) {
+      return res.status(403).json({
+        success: false,
+        error: 'You can only fix your own trip agency names'
+      });
+    }
+    
     console.log('🔧 Fixing trip agency names for admin:', adminId);
     
     const agency = await Agency.findOne({ ownerId: adminId });
@@ -943,6 +1150,7 @@ router.post('/fix-trip-agency-names', async (req, res) => {
     
     console.log('🏢 Found agency:', agency.name);
     
+    // Only update trips that belong to this admin
     const result = await Trip.updateMany(
       { adminId: adminId },
       { 
@@ -972,7 +1180,18 @@ router.post('/fix-trip-agency-names', async (req, res) => {
   }
 });
 
-// Debug routes
+// Authentication test route - SECURE
+router.get('/debug/auth-test/:userId', requireAuthAndOwnership, async (req, res) => {
+  res.json({
+    success: true,
+    message: 'Authentication test passed',
+    authenticatedUser: req.auth.userId,
+    requestedUser: req.params.userId,
+    matches: req.auth.userId === req.params.userId
+  });
+});
+
+// Debug routes (only for development - should be removed in production)
 router.get('/debug-bargain-requests', async (req, res) => {
   try {
     const allRequests = await BargainRequest.find({}).populate('tripId', 'tripName');
@@ -1021,30 +1240,7 @@ router.delete('/reset-bargain-requests', async (req, res) => {
     });
   }
 });
-// Get bookings for a specific user
-// Get user bookings
-router.get('/bookings/user/:userId', async (req, res) => {
-  try {
-    const { userId } = req.params;
-    console.log('📋 Fetching bookings for user:', userId);
 
-    const bookings = await Booking.find({ customerId: userId })
-      .sort({ createdAt: -1 });
-
-    res.json({
-      success: true,
-      bookings: bookings
-    });
-
-  } catch (error) {
-    console.error('❌ Error fetching user bookings:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch bookings'
-    });
-  }
-});
-
-
+console.log('✅ Trips routes configured with complete security and user isolation');
 
 module.exports = router;

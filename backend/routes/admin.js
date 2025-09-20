@@ -2,11 +2,17 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const cloudinary = require('cloudinary').v2;
+const { body, validationResult, param } = require('express-validator');
 const Trip = require('../models/Trip');
 const Agency = require('../models/Agency');
+const Booking = require('../models/Booking');
+const BargainRequest = require('../models/BargainRequest'); // Add this for bargain requests
 const mongoose = require('mongoose');
 
-console.log('📁 Admin routes module loaded');
+// IMPORT THE AUTH MIDDLEWARE
+const { requireAuth, requireAdmin, validateUserOwnership, requireAuthAndOwnership } = require('../middleware/auth');
+
+console.log('📁 Admin routes module loaded with complete security');
 
 // Configure Cloudinary
 cloudinary.config({
@@ -29,6 +35,30 @@ const upload = multer({
   }
 });
 
+// Input validation middleware
+const validateAgency = [
+  body('name').trim().notEmpty().withMessage('Agency name is required'),
+  body('ownerName').trim().notEmpty().withMessage('Owner name is required'),
+  body('ownerEmail').isEmail().withMessage('Valid email is required'),
+  body('phone').matches(/^[\+]?[0-9\s\-\(\)]{10,15}$/).withMessage('Valid phone number is required')
+];
+
+const validateUserId = [
+  param('userId')
+    .notEmpty()
+    .withMessage('User ID is required')
+    .matches(/^user_[a-zA-Z0-9_]+$/)
+    .withMessage('Invalid Clerk user ID format')
+];
+
+const validateAdminId = [
+  param('adminId')
+    .notEmpty()
+    .withMessage('Admin ID is required')
+    .matches(/^user_[a-zA-Z0-9_]+$/)
+    .withMessage('Invalid Clerk user ID format')
+];
+
 // Helper function to clean up Cloudinary images
 const deleteCloudinaryImage = async (publicId) => {
   try {
@@ -39,12 +69,22 @@ const deleteCloudinaryImage = async (publicId) => {
   }
 };
 
-// Create agency endpoint (for signup flow) - CORRECTED
-router.post('/create-agency', async (req, res) => {
-  console.log('🏢 Creating new agency...');
-  console.log('Request body:', req.body);
-  
+// Create agency endpoint - SECURE
+router.post('/create-agency', requireAuth, validateAgency, async (req, res) => {
   try {
+    // Check validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation failed',
+        details: errors.array()
+      });
+    }
+
+    console.log('🏢 Creating new agency...');
+    console.log('Request body:', req.body);
+    
     const {
       name,
       ownerId,
@@ -59,6 +99,16 @@ router.post('/create-agency', async (req, res) => {
       description,
       status = 'active'
     } = req.body;
+
+    const authenticatedUserId = req.auth.userId;
+    
+    // SECURITY: Ensure user can only create agency for themselves
+    if (ownerId !== authenticatedUserId) {
+      return res.status(403).json({
+        success: false,
+        error: 'You can only create an agency for yourself'
+      });
+    }
 
     // Validate required fields (matching your schema)
     if (!name || !ownerId || !ownerName || !ownerEmail || !phone) {
@@ -142,13 +192,12 @@ router.post('/create-agency', async (req, res) => {
   }
 });
 
-// Get agency profile
-router.get('/profile/:ownerId', async (req, res) => {
+// Get agency profile - SECURE
+router.get('/profile/:ownerId', requireAuthAndOwnership, async (req, res) => {
   try {
     console.log('📋 Fetching profile for owner ID:', req.params.ownerId);
-
     const agency = await Agency.findOne({ ownerId: req.params.ownerId });
-
+    
     if (!agency) {
       return res.status(404).json({
         success: false,
@@ -157,12 +206,10 @@ router.get('/profile/:ownerId', async (req, res) => {
     }
 
     console.log('✅ Found agency profile:', agency.name);
-
     res.json({
       success: true,
       agency: agency
     });
-
   } catch (error) {
     console.error('❌ Error fetching profile:', error);
     res.status(500).json({
@@ -173,8 +220,8 @@ router.get('/profile/:ownerId', async (req, res) => {
   }
 });
 
-// Update agency profile - CORRECTED to match schema
-router.put('/profile/:ownerId', async (req, res) => {
+// Update agency profile - SECURE
+router.put('/profile/:ownerId', requireAuthAndOwnership, async (req, res) => {
   try {
     console.log('✏️ Updating profile for owner ID:', req.params.ownerId);
     console.log('Update data:', req.body);
@@ -195,7 +242,6 @@ router.put('/profile/:ownerId', async (req, res) => {
         gstNumber: gstNumber.toUpperCase(),
         ownerId: { $ne: req.params.ownerId }
       });
-
       if (existingAgency) {
         return res.status(400).json({
           success: false,
@@ -232,7 +278,6 @@ router.put('/profile/:ownerId', async (req, res) => {
     }
 
     console.log('✅ Profile updated successfully');
-
     res.json({
       success: true,
       message: 'Profile updated successfully',
@@ -241,7 +286,6 @@ router.put('/profile/:ownerId', async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error updating profile:', error);
-
     // Handle validation errors
     if (error.name === 'ValidationError') {
       return res.status(400).json({
@@ -250,7 +294,6 @@ router.put('/profile/:ownerId', async (req, res) => {
         details: error.message
       });
     }
-
     // Handle duplicate key errors
     if (error.code === 11000) {
       const field = Object.keys(error.keyPattern)[0];
@@ -268,13 +311,15 @@ router.put('/profile/:ownerId', async (req, res) => {
   }
 });
 
-// ✅ FIXED TRIP CREATION ROUTE WITH PROPER OTP HANDLING
-router.post('/trips', upload.array('itineraryImages', 10), async (req, res) => {
+// TRIP CREATION - SECURE
+router.post('/trips', requireAuth, upload.array('itineraryImages', 10), async (req, res) => {
   console.log('🎯 Creating trip with OTP handling');
   console.log('📦 Request body:', req.body);
   console.log('📸 Files uploaded:', req.files?.length || 0);
   
   try {
+    const authenticatedUserId = req.auth.userId;
+    
     const imageUrls = [];
     
     // Upload images to Cloudinary if files are provided
@@ -339,8 +384,16 @@ router.post('/trips', upload.array('itineraryImages', 10), async (req, res) => {
       exclusions,
       maxCapacity,
       adminId,
-      tripOTP // ✅ EXTRACT OTP FROM REQUEST
+      tripOTP
     } = req.body;
+    
+    // SECURITY: Ensure admin can only create trips for themselves
+    if (adminId !== authenticatedUserId) {
+      return res.status(403).json({
+        success: false,
+        error: 'You can only create trips for your own agency'
+      });
+    }
     
     // STRICT VALIDATION for admin ID
     if (!adminId || typeof adminId !== 'string' || adminId.trim() === '') {
@@ -436,7 +489,7 @@ router.post('/trips', upload.array('itineraryImages', 10), async (req, res) => {
       adminId: cleanAdminId,
       agencyId: cleanAdminId,
       agencyName: agencyName,
-      tripOTP: cleanTripOTP, // ✅ SET THE OTP HERE
+      tripOTP: cleanTripOTP,
       itineraryImages: imageUrls,
       createdAt: new Date(),
       updatedAt: new Date()
@@ -484,21 +537,21 @@ router.post('/trips', upload.array('itineraryImages', 10), async (req, res) => {
   }
 });
 
-// Get all trips for admin (GET /api/admin/trips) - WITH PERFECT ADMIN ISOLATION
-router.get('/trips', async (req, res) => {
+// Get all trips for admin - SECURE
+router.get('/trips', requireAuth, async (req, res) => {
   console.log('🎯 GET /api/admin/trips route hit');
   
   try {
-    const { adminId, status, page = 1, limit = 50 } = req.query;
-    console.log('📊 Fetching trips with filter:', { adminId, status, page, limit });
+    const authenticatedUserId = req.auth.userId;
+    const { status, page = 1, limit = 50 } = req.query;
     
-    // Build filter query - STRICT admin filtering
-    const filter = {};
-    if (adminId) {
-      filter.adminId = adminId;
-      console.log('🔒 STRICT FILTER: Only showing trips for admin:', adminId);
-    }
+    console.log('📊 Fetching trips for authenticated admin:', authenticatedUserId);
+    
+    // SECURITY: Admin can only see their own trips
+    const filter = { adminId: authenticatedUserId };
     if (status) filter.status = status;
+    
+    console.log('🔒 STRICT FILTER: Only showing trips for admin:', authenticatedUserId);
     
     // Calculate pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -511,12 +564,6 @@ router.get('/trips', async (req, res) => {
     const totalTrips = await Trip.countDocuments(filter);
     
     console.log(`✅ Found ${trips.length} trips for admin (${totalTrips} total matching filter)`);
-    
-    // Debug: Show admin IDs of found trips
-    if (trips.length > 0) {
-      console.log('🔍 Trip admin IDs:', trips.map(t => t.adminId));
-      console.log('🔍 Trip OTPs:', trips.map(t => t.tripOTP));
-    }
     
     res.json({
       success: true,
@@ -540,12 +587,13 @@ router.get('/trips', async (req, res) => {
   }
 });
 
-// Get single trip by ID (GET /api/admin/trips/:id)
-router.get('/trips/:id', async (req, res) => {
+// Get single trip by ID - SECURE
+router.get('/trips/:id', requireAuth, async (req, res) => {
   console.log(`🎯 GET /api/admin/trips/${req.params.id} route hit`);
   
   try {
     const tripId = req.params.id;
+    const authenticatedUserId = req.auth.userId;
     
     if (!mongoose.Types.ObjectId.isValid(tripId)) {
       return res.status(400).json({
@@ -554,12 +602,16 @@ router.get('/trips/:id', async (req, res) => {
       });
     }
     
-    const trip = await Trip.findById(tripId);
+    // SECURITY: Admin can only access their own trips
+    const trip = await Trip.findOne({ 
+      _id: tripId,
+      adminId: authenticatedUserId 
+    });
     
     if (!trip) {
       return res.status(404).json({
         success: false,
-        error: 'Trip not found'
+        error: 'Trip not found or you do not have permission to access it'
       });
     }
     
@@ -581,14 +633,15 @@ router.get('/trips/:id', async (req, res) => {
   }
 });
 
-// Update trip (PUT /api/admin/trips/:id)
-router.put('/trips/:id', upload.array('itineraryImages', 10), async (req, res) => {
+// Update trip - SECURE
+router.put('/trips/:id', requireAuth, upload.array('itineraryImages', 10), async (req, res) => {
   console.log(`🎯 PUT /api/admin/trips/${req.params.id} route hit`);
   console.log('📦 Update data:', req.body);
   console.log('📸 Files uploaded:', req.files?.length || 0);
   
   try {
     const tripId = req.params.id;
+    const authenticatedUserId = req.auth.userId;
     
     if (!mongoose.Types.ObjectId.isValid(tripId)) {
       return res.status(400).json({
@@ -597,16 +650,20 @@ router.put('/trips/:id', upload.array('itineraryImages', 10), async (req, res) =
       });
     }
     
-    // Find existing trip to check ownership and get old images
-    const existingTrip = await Trip.findById(tripId);
+    // SECURITY: Find existing trip and verify ownership
+    const existingTrip = await Trip.findOne({
+      _id: tripId,
+      adminId: authenticatedUserId
+    });
+    
     if (!existingTrip) {
       return res.status(404).json({
         success: false,
-        error: 'Trip not found'
+        error: 'Trip not found or you do not have permission to update it'
       });
     }
     
-    // Handle image uploads
+    // Handle image uploads (existing code)
     const imageUrls = [];
     if (req.files && req.files.length > 0) {
       console.log(`🔄 Uploading ${req.files.length} new images to Cloudinary...`);
@@ -664,12 +721,8 @@ router.put('/trips/:id', upload.array('itineraryImages', 10), async (req, res) =
       updatedAt: new Date()
     };
     
-    // Don't update OTP during trip updates - keep original
-    // The OTP should remain the same for the life of the trip
-    
     // Handle image replacement
     if (imageUrls.length > 0) {
-      // If replacing images, delete old ones from Cloudinary
       if (req.body.replaceImages === 'true' && existingTrip.itineraryImages) {
         console.log('🗑️ Deleting old images from Cloudinary...');
         for (const oldImage of existingTrip.itineraryImages) {
@@ -679,7 +732,6 @@ router.put('/trips/:id', upload.array('itineraryImages', 10), async (req, res) =
         }
         updateData.itineraryImages = imageUrls;
       } else {
-        // Append new images to existing ones
         updateData.itineraryImages = [...(existingTrip.itineraryImages || []), ...imageUrls];
       }
     }
@@ -703,7 +755,6 @@ router.put('/trips/:id', upload.array('itineraryImages', 10), async (req, res) =
   } catch (error) {
     console.error('❌ Error updating trip:', error);
     
-    // Handle validation errors
     if (error.name === 'ValidationError') {
       return res.status(400).json({
         success: false,
@@ -719,12 +770,13 @@ router.put('/trips/:id', upload.array('itineraryImages', 10), async (req, res) =
   }
 });
 
-// Delete trip (DELETE /api/admin/trips/:id)
-router.delete('/trips/:id', async (req, res) => {
+// Delete trip - SECURE
+router.delete('/trips/:id', requireAuth, async (req, res) => {
   console.log(`🎯 DELETE /api/admin/trips/${req.params.id} route hit`);
   
   try {
     const tripId = req.params.id;
+    const authenticatedUserId = req.auth.userId;
     
     if (!mongoose.Types.ObjectId.isValid(tripId)) {
       return res.status(400).json({
@@ -733,14 +785,21 @@ router.delete('/trips/:id', async (req, res) => {
       });
     }
     
-    const deletedTrip = await Trip.findByIdAndDelete(tripId);
+    // SECURITY: Find and delete only if it belongs to the authenticated admin
+    const tripToDelete = await Trip.findOne({
+      _id: tripId,
+      adminId: authenticatedUserId
+    });
     
-    if (!deletedTrip) {
+    if (!tripToDelete) {
       return res.status(404).json({
         success: false,
-        error: 'Trip not found'
+        error: 'Trip not found or you do not have permission to delete it'
       });
     }
+    
+    // Delete the trip
+    const deletedTrip = await Trip.findByIdAndDelete(tripId);
     
     // Delete associated images from Cloudinary
     if (deletedTrip.itineraryImages && deletedTrip.itineraryImages.length > 0) {
@@ -768,23 +827,16 @@ router.delete('/trips/:id', async (req, res) => {
   }
 });
 
-// CORRECTED Dashboard stats with strict admin filtering
-router.get('/stats', async (req, res) => {
+// ENHANCED Dashboard stats - SECURE
+router.get('/stats', requireAuth, async (req, res) => {
   console.log('📊 GET /api/admin/stats route hit');
   
   try {
-    const { adminId } = req.query;
-    console.log('📊 Fetching stats for admin:', adminId);
+    const authenticatedUserId = req.auth.userId;
+    console.log('📊 Fetching stats for authenticated admin:', authenticatedUserId);
     
-    if (!adminId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Admin ID is required for dashboard stats'
-      });
-    }
-
-    // STRICT filtering by adminId - each admin sees only their trips
-    const filter = { adminId: adminId };
+    // SECURITY: Admin can only see their own stats
+    const filter = { adminId: authenticatedUserId };
     console.log('📊 Using strict filter:', filter);
     
     const totalTrips = await Trip.countDocuments(filter);
@@ -793,10 +845,16 @@ router.get('/stats', async (req, res) => {
     
     // Get trips for this admin only
     const trips = await Trip.find(filter);
-    const totalBookings = trips.reduce((sum, trip) => sum + (trip.currentBookings || 0), 0);
-    const totalRevenue = trips.reduce((sum, trip) => sum + ((trip.currentBookings || 0) * trip.totalBudget), 0);
     
-    console.log(`📊 Admin ${adminId} has ${totalTrips} trips (${activeTrips} active, ${inactiveTrips} inactive)`);
+    // Get bookings for this admin's trips only - SECURE
+    const adminBookings = await Booking.find({ adminId: authenticatedUserId });
+    const totalBookings = adminBookings.length;
+    const confirmedBookings = adminBookings.filter(b => b.bookingStatus === 'confirmed').length;
+    const totalRevenue = adminBookings
+      .filter(b => b.bookingStatus === 'confirmed')
+      .reduce((sum, booking) => sum + booking.totalAmount, 0);
+    
+    console.log(`📊 Admin ${authenticatedUserId} has ${totalTrips} trips, ${totalBookings} bookings`);
     
     // Get top destinations for this admin
     const destinationCounts = {};
@@ -816,11 +874,12 @@ router.get('/stats', async (req, res) => {
       activeTrips,
       inactiveTrips,
       totalBookings,
-      pendingBookings: 0,
+      confirmedBookings,
+      pendingBookings: totalBookings - confirmedBookings,
       totalRevenue,
-      thisMonthRevenue: 0,
-      totalCustomers: 0,
-      activeCustomers: 0,
+      thisMonthRevenue: 0, // Could calculate this with date filters
+      totalCustomers: [...new Set(adminBookings.map(b => b.customerId))].length,
+      activeCustomers: [...new Set(adminBookings.filter(b => b.bookingStatus === 'confirmed').map(b => b.customerId))].length,
       averageRating: 4.6,
       topDestinations,
       averageTripBudget: totalTrips > 0 ? trips.reduce((sum, trip) => sum + trip.totalBudget, 0) / totalTrips : 0,
@@ -836,7 +895,7 @@ router.get('/stats', async (req, res) => {
       success: true,
       stats: stats,
       message: 'Dashboard stats retrieved successfully',
-      adminId: adminId
+      adminId: authenticatedUserId
     });
     
   } catch (error) {
@@ -848,12 +907,178 @@ router.get('/stats', async (req, res) => {
   }
 });
 
-// Bulk operations for trips
-router.patch('/trips/bulk-status', async (req, res) => {
+// FIXED: Get bookings for admin - Use same auth pattern as /stats route
+router.get('/bookings/:adminId', requireAuth, async (req, res) => {
+  console.log('📋 Fixed bookings route called');
+  console.log('📍 Route:', req.method, req.originalUrl);
+  console.log('📝 Request params:', req.params);
+  console.log('🔐 Auth object:', req.auth);
+  
+  try {
+    const { adminId } = req.params;
+    const authenticatedUserId = req.auth?.userId;
+    
+    // Security: Admin can only access their own bookings
+    if (adminId !== authenticatedUserId) {
+      console.log('🚨 SECURITY: Attempted access denied');
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied - you can only view your own bookings'
+      });
+    }
+    
+    console.log('📋 Fetching bookings for admin:', adminId);
+    
+    const bookings = await Booking.find({ adminId })
+      .populate('tripId', 'tripName locations departureDateTime totalBudget tripOTP')
+      .sort({ createdAt: -1 });
+      
+    console.log('✅ Found', bookings.length, 'bookings for admin');
+    
+    res.json({
+      success: true,
+      bookings: bookings.map(booking => ({
+        _id: booking._id,
+        tripName: booking.tripId?.tripName || 'Unknown Trip',
+        tripOTP: booking.tripOTP,
+        customerName: booking.customerName,
+        customerEmail: booking.customerEmail,
+        customerPhone: booking.customerPhone,
+        bookingDate: booking.bookingDate,
+        bookingStatus: booking.bookingStatus,
+        totalAmount: booking.totalAmount,
+        specialRequests: booking.specialRequests
+      }))
+    });
+    
+  } catch (error) {
+    console.error('❌ Error fetching admin bookings:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch bookings'
+    });
+  }
+});
+
+// FIXED: Get booking statistics for admin dashboard - Use same auth pattern as /stats route
+router.get('/booking-stats/:adminId', requireAuth, async (req, res) => {
+  try {
+    const { adminId } = req.params;
+    const authenticatedUserId = req.auth?.userId;
+    
+    // Security: Admin can only access their own booking stats
+    if (adminId !== authenticatedUserId) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied - you can only view your own booking statistics'
+      });
+    }
+    
+    console.log('📊 Fetching booking stats for admin:', adminId);
+    
+    const totalBookings = await Booking.countDocuments({ adminId });
+    const confirmedBookings = await Booking.countDocuments({ 
+      adminId, 
+      bookingStatus: 'confirmed' 
+    });
+    const recentBookings = await Booking.find({ adminId })
+      .populate('tripId', 'tripName')
+      .sort({ createdAt: -1 })
+      .limit(5);
+    
+    const revenueData = await Booking.aggregate([
+      { $match: { adminId, bookingStatus: 'confirmed' } },
+      { $group: { _id: null, totalRevenue: { $sum: '$totalAmount' } } }
+    ]);
+    const totalRevenue = revenueData.length > 0 ? revenueData[0].totalRevenue : 0;
+    
+    console.log('✅ Booking stats calculated successfully');
+    
+    res.json({
+      success: true,
+      stats: {
+        totalBookings,
+        confirmedBookings,
+        totalRevenue,
+        recentBookings: recentBookings.map(booking => ({
+          customerName: booking.customerName,
+          tripName: booking.tripId?.tripName || 'Unknown',
+          tripOTP: booking.tripOTP,
+          bookingDate: booking.bookingDate,
+          amount: booking.totalAmount
+        }))
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error fetching booking stats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch booking statistics'
+    });
+  }
+});
+
+
+
+
+// SECURE: Get bargain requests for admin - CORRECTED ROUTE WITH PARAMETER
+// FIXED: Get bargain requests for agency owner - Use simple auth like /stats route
+router.get('/bargain/requests/owner/:ownerId', requireAuth, async (req, res) => {
+  try {
+    const { ownerId } = req.params;
+    const authenticatedUserId = req.auth?.userId;
+    
+    // Security: User can only access their own bargain requests
+    if (ownerId !== authenticatedUserId) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied - you can only view your own bargain requests'
+      });
+    }
+    
+    console.log('📋 Fetching bargain requests for owner:', ownerId);
+    
+    const agency = await Agency.findOne({ ownerId: ownerId });
+    
+    if (!agency) {
+      return res.json({
+        success: true,
+        requests: [],
+        message: 'No agency found for this owner'
+      });
+    }
+    
+    const requests = await BargainRequest.find({ agencyId: agency._id })
+      .populate('tripId', 'tripName locations totalBudget')
+      .sort({ createdAt: -1 });
+    
+    console.log('✅ Found', requests.length, 'bargain requests for agency:', agency.name);
+    
+    res.json({
+      success: true,
+      requests,
+      agencyName: agency.name
+    });
+    
+  } catch (error) {
+    console.error('❌ Error fetching bargain requests:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch bargain requests',
+      details: error.message
+    });
+  }
+});
+
+
+// SECURE Bulk operations - admin can only update their own trips
+router.patch('/trips/bulk-status', requireAuth, async (req, res) => {
   console.log('🎯 BULK status update route hit');
   
   try {
-    const { tripIds, status, adminId } = req.body;
+    const { tripIds, status } = req.body;
+    const authenticatedUserId = req.auth.userId;
     
     if (!tripIds || !Array.isArray(tripIds) || tripIds.length === 0) {
       return res.status(400).json({
@@ -869,9 +1094,11 @@ router.patch('/trips/bulk-status', async (req, res) => {
       });
     }
     
-    // Build filter to ensure admin can only update their own trips
-    const filter = { _id: { $in: tripIds } };
-    if (adminId) filter.adminId = adminId;
+    // SECURITY: Admin can only update their own trips
+    const filter = { 
+      _id: { $in: tripIds },
+      adminId: authenticatedUserId // Ensure admin can only update their own trips
+    };
     
     const result = await Trip.updateMany(
       filter,
@@ -881,7 +1108,7 @@ router.patch('/trips/bulk-status', async (req, res) => {
       }
     );
     
-    console.log(`✅ Updated ${result.modifiedCount} trips to ${status}`);
+    console.log(`✅ Updated ${result.modifiedCount} trips to ${status} for admin ${authenticatedUserId}`);
     
     res.json({
       success: true,
@@ -898,22 +1125,18 @@ router.patch('/trips/bulk-status', async (req, res) => {
   }
 });
 
-// Check if user is admin by agency ownership - CORRECTED
-router.get('/check-admin-status/:userId', async (req, res) => {
+// Check if user is admin - SECURE
+router.get('/check-admin-status/:userId', requireAuthAndOwnership, async (req, res) => {
   try {
     const { userId } = req.params;
-
     console.log('🔍 Checking admin status for user:', userId);
-
     // Find agency owned by this user
     const agency = await Agency.findOne({ 
       ownerId: userId,
       status: 'active' 
     });
-
     if (agency) {
       console.log('✅ User is admin - owns agency:', agency.name);
-
       res.json({
         success: true,
         isAdmin: true,
@@ -931,7 +1154,6 @@ router.get('/check-admin-status/:userId', async (req, res) => {
       });
     } else {
       console.log('❌ User is not admin - no agency found');
-
       res.json({
         success: true,
         isAdmin: false,
@@ -939,7 +1161,6 @@ router.get('/check-admin-status/:userId', async (req, res) => {
         message: 'User does not have admin privileges'
       });
     }
-
   } catch (error) {
     console.error('❌ Error checking admin status:', error);
     res.status(500).json({
@@ -951,131 +1172,16 @@ router.get('/check-admin-status/:userId', async (req, res) => {
     });
   }
 });
+// TEST ROUTES - Add these at the end of your routes/admin.js file, just before module.exports
 
-// DEBUG: Check all trips and their admin IDs
-router.get('/debug-all-trips', async (req, res) => {
-  try {
-    console.log('🔍 DEBUG: Listing all trips in database');
-    
-    const trips = await Trip.find({}).sort({ createdAt: -1 });
-    const totalCount = await Trip.countDocuments();
-    
-    console.log(`📊 Found ${totalCount} total trips`);
-    trips.forEach((trip, index) => {
-      console.log(`${index + 1}. Trip: "${trip.tripName}"`);
-      console.log(`   - Admin ID: "${trip.adminId}"`);
-      console.log(`   - Agency ID: "${trip.agencyId}"`);
-      console.log(`   - Agency Name: "${trip.agencyName}"`);
-      console.log(`   - Trip OTP: "${trip.tripOTP}"`);
-      console.log(`   - Status: ${trip.status}`);
-      console.log(`   - Locations: ${trip.locations?.join(', ')}`);
-      console.log(`   - Created: ${trip.createdAt}`);
-      console.log('   ---');
-    });
-    
-    res.json({
-      success: true,
-      totalTrips: totalCount,
-      currentUserCheck: req.query.userId || 'none',
-      trips: trips.map(trip => ({
-        _id: trip._id,
-        tripName: trip.tripName,
-        adminId: trip.adminId,
-        agencyId: trip.agencyId,
-        agencyName: trip.agencyName,
-        tripOTP: trip.tripOTP,
-        status: trip.status,
-        locations: trip.locations,
-        createdAt: trip.createdAt
-      }))
-    });
-    
-  } catch (error) {
-    console.error('Debug trips error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
+// TEST ROUTE: Get bookings without middleware
 
-// DELETE ALL TRIPS - For fresh start with proper admin isolation
-router.delete('/delete-all-trips-debug', async (req, res) => {
-  try {
-    console.log('🗑️ DELETING ALL TRIPS - Fresh start');
-    
-    // Get all trips before deletion for logging
-    const allTrips = await Trip.find({}).select('tripName adminId agencyId createdAt');
-    console.log('📊 Trips to be deleted:', allTrips);
-    
-    // Delete all trips
-    const result = await Trip.deleteMany({});
-    console.log(`✅ Deleted ${result.deletedCount} trips`);
-    
-    // Verify deletion
-    const remainingTrips = await Trip.countDocuments();
-    console.log(`📊 Remaining trips: ${remainingTrips}`);
-    
-    res.json({
-      success: true,
-      deletedCount: result.deletedCount,
-      remainingTrips: remainingTrips,
-      message: `Successfully deleted ${result.deletedCount} trips. Database is now clean for fresh start.`
-    });
-    
-  } catch (error) {
-    console.error('❌ Error deleting all trips:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
 
-// ADD THIS ROUTE to fix existing trips
-router.post('/fix-trip-admin-ids', async (req, res) => {
-  try {
-    const { currentAdminId, targetAdminId } = req.body;
-    
-    console.log('🔧 Updating trip admin IDs...');
-    console.log('From:', currentAdminId || 'any');
-    console.log('To:', targetAdminId);
-    
-    // Find trips to update
-    const filter = currentAdminId ? { adminId: currentAdminId } : {};
-    const tripsToUpdate = await Trip.find(filter);
-    
-    console.log(`Found ${tripsToUpdate.length} trips to update`);
-    
-    // Update all matching trips
-    const result = await Trip.updateMany(
-      filter,
-      { 
-        $set: { 
-          adminId: targetAdminId,
-          agencyId: targetAdminId, // Also update agencyId if needed
-          updatedAt: new Date() 
-        } 
-      }
-    );
-    
-    console.log(`✅ Updated ${result.modifiedCount} trips`);
-    
-    res.json({
-      success: true,
-      message: `Updated ${result.modifiedCount} trips to new admin ID`,
-      modifiedCount: result.modifiedCount
-    });
-    
-  } catch (error) {
-    console.error('❌ Error updating trip admin IDs:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
+// TEST ROUTE: Get booking stats without middleware
 
-console.log('✅ Admin routes configured with perfect admin isolation and OTP handling');
+
+
+
+console.log('✅ Admin routes configured with complete security, user isolation, and booking protection');
 
 module.exports = router;
