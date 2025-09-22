@@ -12,10 +12,11 @@ const app = express();
 app.use(cors({
       origin: [
     'http://localhost:3000', // Development
-    'https://esacep-p6yf.vercel.app', // Your frontend URL
-    'https://esacep-git-master-adityas-projects-248e2e3c.vercel.app', // Backend preview URL
-    'https://esacep.vercel.app', // Backend main URL
-    'https://*.vercel.app' // All Vercel apps
+    'https://esacep-p6yf.vercel.app', // Your main frontend URL
+    'https://esacep-p6yf-git-master-adityas-projects-248e2e3c.vercel.app', // Frontend preview
+    'https://esacep-p6yf-87fwamxqj-adityas-projects-248e2e3c.vercel.app', // Another frontend preview
+    'https://esacep.vercel.app', // Your backend URL
+    'https://*.vercel.app' // All Vercel domains
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
