@@ -12,7 +12,7 @@ const app = express();
 app.use(cors({
   origin: ['http://localhost:3000',
   'https://*.vercel.app', // Allow all Vercel apps
-    'https://esacep-p6yf.vercel.app/'], // You'll update this later // Allow your React app]
+    'https://esacep-p6yf-git-master-adityas-projects-248e2e3c.vercel.app'], // You'll update this later // Allow your React app]
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 }));
