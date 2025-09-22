@@ -10,9 +10,13 @@ const app = express();
 
 // CORS Configuration - ADD THIS BEFORE OTHER MIDDLEWARE
 app.use(cors({
-  origin: ['http://localhost:3000',
-  'https://*.vercel.app', // Allow all Vercel apps
-    'https://esacep-p6yf-git-master-adityas-projects-248e2e3c.vercel.app'], // You'll update this later // Allow your React app]
+      origin: [
+    'http://localhost:3000', // Development
+    'https://esacep-p6yf.vercel.app', // Your frontend URL
+    'https://esacep-git-master-adityas-projects-248e2e3c.vercel.app', // Backend preview URL
+    'https://esacep.vercel.app', // Backend main URL
+    'https://*.vercel.app' // All Vercel apps
+  ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 }));
