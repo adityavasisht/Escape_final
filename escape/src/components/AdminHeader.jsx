@@ -40,7 +40,7 @@ const AdminHeader = () => {
             <Link to="/" className="group">
               <div className="w-11 h-11 bg-gradient-to-br from-teal-500 to-teal-600 rounded-xl flex items-center justify-center shadow-md group-hover:shadow-lg group-hover:scale-105 transition-all duration-200">
                 <img 
-                  src="/assets/logo.svg" 
+                  src="/assets/logo.png" 
                   alt="Escape Logo" 
                   className="w-7 h-7 object-contain" 
                 />
@@ -57,7 +57,7 @@ const AdminHeader = () => {
             {isSignedIn && (
               <button
                 onClick={handleDashboardClick}
-                className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white px-5 py-2.5 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 shadow-sm hover:shadow-md group"
+                className="btn-outline-light font-medium flex items-center gap-2"
               >
                 <svg className="h-4 w-4 group-hover:scale-110 transition-transform duration-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2V7m0 0V5a2 2 0 012-2h10a2 2 0 012 2v2M7 7h10" />
@@ -70,12 +70,12 @@ const AdminHeader = () => {
             <div className="relative">
               <button 
                 onClick={toggleSearch}
-                className={`${showSearch ? 'bg-blue-600 ring-2 ring-blue-100' : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700'} text-white px-5 py-2.5 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 shadow-sm hover:shadow-md group`}
+                className="icon-btn-outline-light"
+                aria-label="Search"
               >
                 <svg className={`h-4 w-4 transition-all duration-200 ${showSearch ? 'rotate-90 scale-110' : 'group-hover:scale-110'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
                 </svg>
-                Search
               </button>
 
               {/* Enhanced search dropdown with smooth animations */}

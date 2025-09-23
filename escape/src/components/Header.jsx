@@ -38,7 +38,7 @@ const Header = () => {
             <Link to="/">
               <div className="w-12 h-12 bg-teal-500 rounded-lg flex items-center justify-center">
                 <img 
-                  src="/assets/logo.svg" 
+                  src="/assets/logo.png" 
                   alt="Escape Logo" 
                   className="w-8 h-8 object-contain" 
                 />
@@ -50,7 +50,7 @@ const Header = () => {
           <nav className="hidden md:flex items-center gap-4">
             <Link 
               to="/bargain" 
-              className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2.5 rounded-md font-medium transition-colors duration-200"
+              className="btn-outline-light font-medium"
             >
               Bargain
             </Link>
@@ -59,7 +59,7 @@ const Header = () => {
             {!isAdmin && (
               <Link 
                 to="/your-bargains" 
-                className="bg-green-500 hover:bg-green-600 text-white px-6 py-2.5 rounded-md font-medium transition-colors duration-200"
+                className="btn-outline-light font-medium"
               >
                 Your Bargains
               </Link>
@@ -69,12 +69,12 @@ const Header = () => {
             <div className="relative">
               <button 
                 onClick={toggleSearch}
-                className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2.5 rounded-md font-medium transition-colors duration-200 flex items-center gap-2"
+                className="icon-btn-outline-light"
+                aria-label="Search"
               >
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
                 </svg>
-                Search
               </button>
 
               {showSearch && (
@@ -95,18 +95,13 @@ const Header = () => {
               )}
             </div>
 
-            <Link 
-              to="/cart" 
-              className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2.5 rounded-md font-medium transition-colors duration-200"
-            >
-              Cart
-            </Link>
+            
 
             {/* Admin Dashboard Button - Show ONLY if user is admin */}
             {isAdmin && (
               <Link 
                 to="/admin-dashboard"
-                className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-2.5 rounded-md font-medium transition-colors duration-200 flex items-center gap-2"
+                className="btn-outline-light font-medium flex items-center gap-2"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 00-2-2z" />
@@ -126,12 +121,12 @@ const Header = () => {
               </div>
             )}
 
-            <button className="text-2xl cursor-pointer hover:scale-110 transition-transform duration-200 ml-2">
+            <button className="btn-outline-light ml-2 h-11 px-6">
               🌐
             </button>
           </nav>
 
-          <button className="md:hidden text-gray-700 text-2xl">☰</button>
+          <button className="md:hidden btn-outline-light-sm">☰</button>
         </div>
       </div>
     </header>

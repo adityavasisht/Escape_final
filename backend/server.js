@@ -7,15 +7,20 @@ require('dotenv').config();
 const app = express();
 
 // CORS Configuration
+// Allow localhost during development, your configured FRONTEND_URL, and any Vercel preview/prod domain
+const vercelDomainRegex = /^https?:\/\/([a-z0-9-]+)\.vercel\.app(\/?|$)/i;
+const allowedOrigins = [
+  'http://localhost:3000',
+  process.env.FRONTEND_URL // e.g., https://your-frontend.vercel.app
+].filter(Boolean);
+
 app.use(cors({
-  origin: [
-    'http://localhost:3000', // Development
-    'https://esacep-p6yf.vercel.app', // Your main frontend URL
-    'https://esacep-p6yf-git-master-adityas-projects-248e2e3c.vercel.app', // Frontend preview
-    'https://esacep-p6yf-87fwamxqj-adityas-projects-248e2e3c.vercel.app', // Another frontend preview
-    'https://esacep.vercel.app', // Your backend URL
-    'https://*.vercel.app' // All Vercel domains
-  ],
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    if (vercelDomainRegex.test(origin)) return callback(null, true);
+    return callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']

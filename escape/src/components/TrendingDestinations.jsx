@@ -59,7 +59,7 @@ const TrendingDestinations = () => {
                   </div>
                 )}
 
-                <div className="w-full h-44 rounded-xl mb-4 relative overflow-hidden group-hover:scale-105 transition-transform duration-300">
+                <div className="w-full h-44 rounded-xl mb-4 relative overflow-hidden group-hover:scale-105 transition-transform duration-300 shadow-card">
                   {package_.itineraryImages && package_.itineraryImages.length > 0 ? (
                     <img
                       src={package_.itineraryImages[0].url}
@@ -89,11 +89,11 @@ const TrendingDestinations = () => {
                 ₹{package_.totalBudget?.toLocaleString()}
               </div>
               <button 
-  onClick={() => window.location.href = `/trip/${package_._id}`}
-  className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg font-medium transition-colors"
->
-  Book Now
-</button>
+                onClick={() => window.location.href = `/trip/${package_._id}`}
+                className="btn-outline-light px-5 h-11 rounded-md font-medium"
+              >
+                Book Now
+              </button>
             </div>
           ))}
         </div>

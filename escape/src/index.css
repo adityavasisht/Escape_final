@@ -1,3 +1,77 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Global font and desaturation rules */
+@layer base {
+  html, body {
+    font-family: "Google Sans Code", "Google Sans", Roboto, Inter, system-ui, -apple-system, Segoe UI, Arial, sans-serif;
+  }
+}
+
+@layer components {
+  /* Marquee animation */
+  @keyframes marquee-scroll {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+
+  .marquee-track {
+    animation: marquee-scroll 20s linear infinite;
+    will-change: transform;
+  }
+  .btn-outline-light {
+    @apply h-11 px-6 rounded-md transition-all duration-300 ease-out flex items-center gap-2 shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30;
+    border-width: 2px;
+    --btn-color: black;
+    color: var(--btn-color);
+    border-color: var(--btn-color);
+    background-color: transparent;
+    will-change: transform, box-shadow, background-color;
+  }
+  .btn-outline-light:hover {
+    background-color: rgb(255 255 255 / 0.10);
+  }
+  .btn-outline-light-sm {
+    @apply h-10 px-4 rounded-md transition-all duration-300 ease-out flex items-center gap-2 shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30;
+    border-width: 2px;
+    --btn-color: black;
+    color: var(--btn-color);
+    border-color: var(--btn-color);
+    background-color: transparent;
+    will-change: transform, box-shadow, background-color;
+  }
+  .btn-outline-light-sm:hover {
+    background-color: rgb(255 255 255 / 0.10);
+  }
+  .icon-btn-outline-light {
+    @apply h-11 w-11 rounded-md transition-all duration-300 ease-out flex items-center justify-center shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30;
+    border-width: 2px;
+    --btn-color: black;
+    color: var(--btn-color);
+    border-color: var(--btn-color);
+    background-color: transparent;
+    will-change: transform, box-shadow, background-color;
+  }
+  .icon-btn-outline-light:hover {
+    background-color: rgb(255 255 255 / 0.10);
+  }
+
+  /* Primary filled button using OKLCH color */
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-lg font-medium transition-all duration-300 ease-out hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/30;
+    --btn-color: black;
+    color: black;
+    background-color: var(--btn-color);
+    box-shadow: 0 6px 14px -6px oklch(50% 0 0 / 0.35);
+    will-change: transform, box-shadow, background-color;
+  }
+  .btn-primary:hover { filter: brightness(0.96); }
+  .btn-primary:disabled { filter: grayscale(0.2) brightness(1.05); opacity: 0.7; cursor: not-allowed; }
+
+  /* Unified card shadow tinted with the OKLCH color */
+  .shadow-card {
+    box-shadow: 0 12px 24px -12px oklch(50% 0 0 / 0.28),
+                0 6px 12px -10px oklch(50% 0 0 / 0.18);
+  }
+}

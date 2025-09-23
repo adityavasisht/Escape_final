@@ -634,7 +634,7 @@ const TripDetails = () => {
                   <button
                     onClick={handleBookNow}
                     disabled={isBooking}
-                    className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white py-3 px-6 rounded-lg font-bold text-lg transition-colors duration-200 flex items-center justify-center"
+                    className="w-full btn-outline-light rounded-md font-bold text-lg flex items-center justify-center"
                   >
                     {isBooking ? (
                       <>
@@ -652,7 +652,7 @@ const TripDetails = () => {
                   <button
                     onClick={handleBargainClick}
                     disabled={isBooking}
-                    className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white py-3 px-6 rounded-lg font-medium transition-colors duration-200"
+                    className="w-full btn-outline-light rounded-md font-medium flex items-center justify-center"
                   >
                     Request Custom Deal
                   </button>
