@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useUser, useAuth } from '@clerk/clerk-react'; // Add useAuth
+import WelcomePopup from './WelcomePopup';
 
 const TripDetails = () => {
   const { tripId } = useParams();
@@ -13,6 +14,7 @@ const TripDetails = () => {
   const [error, setError] = useState('');
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isBooking, setIsBooking] = useState(false); // Add booking state
+  const [showWelcome, setShowWelcome] = useState(false);
 
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
 
@@ -117,6 +119,10 @@ const TripDetails = () => {
 
   // Handle bargain button click with pre-selection
   const handleBargainClick = () => {
+    if (!user) {
+      setShowWelcome(true);
+      return;
+    }
     console.log('🎯 Bargain button clicked for trip:', trip.tripName);
     
     // Navigate to bargain page with pre-selected data
@@ -134,7 +140,7 @@ const TripDetails = () => {
   // UPDATED: Handle book now with authentication
   const handleBookNow = async () => {
     if (!user) {
-      alert('Please sign in to book this trip');
+      setShowWelcome(true);
       return;
     }
 
@@ -314,6 +320,7 @@ const TripDetails = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 pt-20">
+      <WelcomePopup isOpen={showWelcome} onClose={() => setShowWelcome(false)} />
       {/* Back Button */}
       <div className="max-w-6xl mx-auto px-5 py-4">
         <button

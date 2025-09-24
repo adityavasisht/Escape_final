@@ -27,7 +27,7 @@ import ManageDeals from './components/ManageDeals';
 import CustomerBargain from './components/CustomerBargain';
 import CustomerBargains from './components/CustomerBargains';
 
-// Protected Home page component - only shows when authenticated
+// Home page component - now public
 const HomePage = () => (
   <>
     <Hero />
@@ -36,7 +36,7 @@ const HomePage = () => (
   </>
 );
 
-// Landing page for non-authenticated users
+// Landing page removed in favor of always-on homepage
 const LandingPage = () => (
   <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center w-full">
     <div className="max-w-4xl mx-auto px-5 py-16 text-center w-full">
@@ -129,7 +129,7 @@ const LandingPage = () => (
   </div>
 );
 
-// Protected Route component - UPDATED TO REDIRECT TO LANDING
+// Protected Route component - redirect to home with signup flag
 const ProtectedRoute = ({ children }) => {
   const { user, isLoaded } = useUser();
 
@@ -142,9 +142,9 @@ const ProtectedRoute = ({ children }) => {
     );
   }
 
-  // REDIRECT TO LANDING PAGE instead of sign-in
+  // If not signed in, send to home with signup flag
   if (!user) {
-    return <Navigate to="/landing" replace />;
+    return <Navigate to="/?signup=1" replace />;
   }
 
   return children;
@@ -392,35 +392,16 @@ const AppContent = () => {
 
   return (
     <div className="App">
-      {/* Conditional Header - Show appropriate header based on ACTUAL admin status */}
-      {isSignedIn && (isAdmin ? <AdminHeader /> : <UserHeader />)}
+      {/* Header always visible; admin header only when signed-in admin */}
+      {isSignedIn && isAdmin ? <AdminHeader /> : <UserHeader />}
 
       {/* Main Routes */}
       <Routes>
-        {/* LANDING PAGE - Default route for non-authenticated users */}
-        <Route path="/landing" element={<LandingPage />} />
-        
-        {/* ROOT ROUTE - Redirect based on authentication status */}
-        <Route 
-          path="/" 
-          element={
-            isSignedIn ? (
-              <HomePage />
-            ) : (
-              <Navigate to="/landing" replace />
-            )
-          } 
-        />
+        {/* ROOT ROUTE - Always public homepage */}
+        <Route path="/" element={<HomePage />} />
 
         {/* Protected user routes */}
-        <Route 
-          path="/trip/:tripId" 
-          element={
-            <ProtectedRoute>
-              <TripDetails />
-            </ProtectedRoute>
-          } 
-        />
+        <Route path="/trip/:tripId" element={<TripDetails />} />
 
         <Route 
           path="/search" 
@@ -503,12 +484,12 @@ const AppContent = () => {
         <Route path="/admin-signup" element={<AdminSignup />} />
         <Route path="/admin-login" element={<AdminLogin />} />
 
-        {/* Catch-all redirect to landing for unknown routes */}
-        <Route path="*" element={<Navigate to="/landing" replace />} />
+        {/* Catch-all redirect to home */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
-      {/* Only show Footer when authenticated and not on admin pages */}
-      {isSignedIn && !(isAdmin && location.pathname.startsWith('/admin')) && <Footer />}
+      {/* Always show Footer except on admin pages when signed-in admin */}
+      {!((isSignedIn && isAdmin) && location.pathname.startsWith('/admin')) && <Footer />}
     </div>
   );
 };

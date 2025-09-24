@@ -1,14 +1,17 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useUser, UserButton } from '@clerk/clerk-react';
+import WelcomePopup from './WelcomePopup';
 
 const UserHeader = () => {
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showWelcome, setShowWelcome] = useState(false);
   const { isSignedIn, user } = useUser();
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const navButtonClass = "h-11 px-6 rounded-md border-2 border-white text-white bg-white/20 transition-colors duration-200 flex items-center gap-2 shadow-md hover:bg-white/40";
+  const navButtonClass = "h-11 px-5 md:px-6 rounded-md border-2 border-white text-white bg-white/20 transition-colors duration-200 inline-flex items-center gap-2 shadow-md hover:bg-white/40 whitespace-nowrap";
 
   const toggleSearch = () => setShowSearch(prev => !prev);
 
@@ -27,8 +30,21 @@ const UserHeader = () => {
 
   const handleBookingsClick = () => navigate('/bookings');
 
+  // Open signup popup if URL has ?signup=1
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('signup') === '1') {
+      setShowWelcome(true);
+      // remove the query param from URL without reload
+      const newUrl = window.location.pathname + window.location.hash;
+      window.history.replaceState({}, '', newUrl);
+    }
+  }, [location.search]);
+
   return (
     <>
+    {/* Global signup modal for logged-out users */}
+    <WelcomePopup isOpen={showWelcome} onClose={() => setShowWelcome(false)} />
     <header 
       className="relative shadow-lg fixed w-full top-0 z-50 overflow-hidden" 
       style={{ minHeight: '160px' }}
@@ -60,7 +76,7 @@ const UserHeader = () => {
       <div className="relative z-20 max-w-6xl mx-auto pr-5 pl-[200px] md:pl-[220px] flex items-center min-h-[160px] justify-between w-full">
 
         {/* Navigation */}
-        <nav className="hidden md:flex items-center gap-4">
+        <nav className="hidden md:flex items-center gap-2 md:gap-3 flex-nowrap ml-auto">
           <Link 
             to="/bargain" 
             className={`${navButtonClass} font-medium`}
@@ -85,7 +101,7 @@ const UserHeader = () => {
             </button>
           )}
           {/* Search */}
-          <div className="relative">
+          <div className="relative inline-flex items-center">
             <button 
               onClick={toggleSearch}
               className={`${navButtonClass} font-medium`}
@@ -95,6 +111,16 @@ const UserHeader = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
               </svg>
             </button>
+            {/* Sign Up button visible only when logged out */}
+            {!isSignedIn && (
+              <button
+                onClick={() => setShowWelcome(true)}
+                className={`${navButtonClass} font-medium ml-2`}
+                aria-label="Sign Up"
+              >
+                Sign Up
+              </button>
+            )}
             {showSearch && (
               <div className="absolute top-full right-0 mt-2 w-72 z-60">
                 <form onSubmit={handleSearchSubmit}>
