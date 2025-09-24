@@ -5,44 +5,29 @@ require('dotenv').config();
 
 const app = express();
 
-<<<<<<< HEAD
-// CORS Configuration
-// Allow localhost during development, your configured FRONTEND_URL, and any Vercel preview/prod domain
+// CORS Configuration: allow localhost, configured FRONTEND_URL, and any Vercel preview/prod domain
 const vercelDomainRegex = /^https?:\/\/([a-z0-9-]+)\.vercel\.app(\/?|$)/i;
 const allowedOrigins = [
-  'http://localhost:3000',
-  process.env.FRONTEND_URL // e.g., https://your-frontend.vercel.app
-].filter(Boolean);
-
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    if (vercelDomainRegex.test(origin)) return callback(null, true);
-    return callback(new Error('Not allowed by CORS'));
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-=======
-// Basic middleware
-const allowlist = [
   'http://localhost:3000',
   process.env.FRONTEND_URL
 ].filter(Boolean);
 
 app.use(cors({
-  origin: (origin, cb) => {
-    if (!origin) return cb(null, true);
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
     try {
       const hostname = new URL(origin).hostname;
       const isVercelPreview = hostname.endsWith('.vercel.app');
-      if (allowlist.includes(origin) || isVercelPreview) return cb(null, true);
-    } catch (_) {}
-    return cb(new Error('Not allowed by CORS'));
+      if (allowedOrigins.includes(origin) || isVercelPreview) return callback(null, true);
+    } catch (_) {
+      // If URL parsing fails, fall back to direct checks
+      if (allowedOrigins.includes(origin) || vercelDomainRegex.test(origin)) return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
   },
-  credentials: true
->>>>>>> 39bae5b3e83cd7ccf69d745406a7e58cc9ab113d
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 // Explicitly handle preflight for all routes
 app.options('*', cors());
@@ -94,5 +79,13 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK' });
 });
 
-// Export the app for Vercel serverless
+// Start server when running on Render or in local development. Do not listen on Vercel serverless.
+const PORT = process.env.PORT || 5001;
+if (process.env.RENDER || process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`🚀 Escape backend listening on port ${PORT}`);
+  });
+}
+
+// Export the app (Vercel uses this export; harmless on Render/local)
 module.exports = app;
