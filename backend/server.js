@@ -5,8 +5,9 @@ require('dotenv').config();
 
 const app = express();
 
-// CORS Configuration: allow localhost, configured FRONTEND_URL, and any Vercel preview/prod domain
+// CORS Configuration: allow localhost, configured FRONTEND_URL, and any Vercel/Render preview/prod domain
 const vercelDomainRegex = /^https?:\/\/([a-z0-9-]+)\.vercel\.app(\/?|$)/i;
+const renderDomainRegex = /^https?:\/\/([a-z0-9-]+)\.onrender\.com(\/?|$)/i;
 const allowedOrigins = [
   'http://localhost:3000',
   process.env.FRONTEND_URL
@@ -18,10 +19,11 @@ app.use(cors({
     try {
       const hostname = new URL(origin).hostname;
       const isVercelPreview = hostname.endsWith('.vercel.app');
-      if (allowedOrigins.includes(origin) || isVercelPreview) return callback(null, true);
+      const isRenderDomain = hostname.endsWith('.onrender.com');
+      if (allowedOrigins.includes(origin) || isVercelPreview || isRenderDomain) return callback(null, true);
     } catch (_) {
       // If URL parsing fails, fall back to direct checks
-      if (allowedOrigins.includes(origin) || vercelDomainRegex.test(origin)) return callback(null, true);
+      if (allowedOrigins.includes(origin) || vercelDomainRegex.test(origin) || renderDomainRegex.test(origin)) return callback(null, true);
     }
     return callback(new Error('Not allowed by CORS'));
   },
