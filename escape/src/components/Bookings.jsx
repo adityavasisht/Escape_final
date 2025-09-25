@@ -115,6 +115,7 @@ const Bookings = () => {
                       Booked on: {new Date(booking.bookingDate).toLocaleDateString()}
                     </p>
                     <p className="text-gray-600">Amount: ₹{booking.totalAmount?.toLocaleString()}</p>
+                    <p className="text-gray-600">Passengers: {booking.totalPassengers || (booking.passengers?.length || 1)}</p>
                     <p className="text-gray-600">Phone: {booking.customerPhone}</p>
                   </div>
                   <div className="text-right">
@@ -135,6 +136,17 @@ const Bookings = () => {
                   </div>
                 </div>
                 
+                {(booking.passengers && booking.passengers.length > 0) && (
+                  <div className="mt-4 p-3 bg-gray-50 rounded">
+                    <p className="text-sm text-gray-700 font-semibold mb-2">Travellers</p>
+                    <ul className="text-sm text-gray-700 list-disc pl-5">
+                      {booking.passengers.map((p, idx) => (
+                        <li key={idx}>Gender: {p.gender || 'Other'}{typeof p.age === 'number' ? `, Age: ${p.age}` : ''}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
                 {booking.specialRequests && (
                   <div className="mt-4 p-3 bg-gray-50 rounded">
                     <p className="text-sm text-gray-700">

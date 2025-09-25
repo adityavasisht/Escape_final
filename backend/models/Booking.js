@@ -59,7 +59,19 @@ const bookingSchema = new mongoose.Schema({
   specialRequests: {
     type: String,
     default: ''
-  }
+  },
+  // Multi-traveler support
+  totalPassengers: {
+    type: Number,
+    default: 1,
+    min: 1
+  },
+  passengers: [
+    {
+      gender: { type: String, enum: ['Male', 'Female', 'Other'], default: 'Other' },
+      age: { type: Number, min: 0, max: 120 }
+    }
+  ]
 }, {
   timestamps: true
 });

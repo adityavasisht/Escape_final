@@ -21,6 +21,14 @@ const bargainRequestSchema = new mongoose.Schema({
     enum: ['pending', 'waiting_list', 'rejected', 'cancelled'], 
     default: 'pending' 
   },
+  // Multi-traveler preferences (optional for quote)
+  totalPassengers: { type: Number, default: 1, min: 1 },
+  passengers: [
+    {
+      gender: { type: String, enum: ['Male', 'Female', 'Other'], default: 'Other' },
+      age: { type: Number, min: 0, max: 120 }
+    }
+  ],
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 }, {

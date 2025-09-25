@@ -17,6 +17,7 @@ const Bargain = () => {
   const [selectedAgency, setSelectedAgency] = useState('');
   const [selectedTrip, setSelectedTrip] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [passengers, setPassengers] = useState([{ gender: 'Other', age: '' }]);
 
   const [agencies, setAgencies] = useState([]);
   const [allTrips, setAllTrips] = useState([]);
@@ -201,7 +202,9 @@ const Bargain = () => {
     customerName: user 
       ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Customer'
       : 'Guest Customer',
-    customerEmail: user?.emailAddresses?.[0]?.emailAddress || 'guest@example.com'
+    customerEmail: user?.emailAddresses?.[0]?.emailAddress || 'guest@example.com',
+    passengers: passengers.map(p => ({ gender: p.gender, age: p.age ? Number(p.age) : undefined })),
+    totalPassengers: passengers.length
   };
 
   console.log('📤 Submitting bargain request:', formData);
@@ -370,6 +373,38 @@ const Bargain = () => {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-8">
+          {/* Passengers */}
+          <div>
+            <label className="block text-lg font-semibold text-gray-700 mb-3">Travellers</label>
+            <div className="space-y-2">
+              {passengers.map((p, idx) => (
+                <div key={idx} className="flex items-center gap-3">
+                  <select
+                    value={p.gender}
+                    onChange={(e) => setPassengers(prev => prev.map((x,i)=> i===idx? { ...x, gender: e.target.value }: x))}
+                    className="px-2 py-2 border rounded w-32"
+                  >
+                    <option>Male</option>
+                    <option>Female</option>
+                    <option>Other</option>
+                  </select>
+                  <input
+                    type="number"
+                    placeholder="Age"
+                    value={p.age}
+                    onChange={(e) => setPassengers(prev => prev.map((x,i)=> i===idx? { ...x, age: e.target.value }: x))}
+                    className="px-3 py-2 border rounded w-28"
+                    min="0"
+                    max="120"
+                  />
+                  {passengers.length > 1 && (
+                    <button type="button" onClick={() => setPassengers(prev => prev.filter((_,i)=>i!==idx))} className="text-red-600 text-sm">Remove</button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <button type="button" onClick={() => setPassengers(prev => [...prev, { gender: 'Other', age: '' }])} className="mt-2 text-sm px-2 py-1 rounded bg-emerald-100 text-emerald-800">+ Add Traveller</button>
+          </div>
             {/* Phone Number Input */}
             <div>
               <label htmlFor="phoneNumber" className="block text-lg font-semibold text-gray-700 mb-3">

@@ -288,6 +288,9 @@ const TripList = ({ onEdit, onDelete, showAllTrips = false, getToken: propGetTok
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Actions
               </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                View Bookings
+              </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
@@ -352,7 +355,7 @@ const TripList = ({ onEdit, onDelete, showAllTrips = false, getToken: propGetTok
                     )}
                   </div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                   <button
                     onClick={() => onEdit(trip)}
                     className="text-emerald-600 hover:text-emerald-900 font-medium"
@@ -372,6 +375,15 @@ const TripList = ({ onEdit, onDelete, showAllTrips = false, getToken: propGetTok
                     Delete
                   </button>
                 </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                <a
+                  href={`/admin-bookings/${trip._id}`}
+                  className="text-blue-600 hover:text-blue-900"
+                  title="View bookings for this trip"
+                >
+                  View Bookings
+                </a>
+              </td>
               </tr>
             ))}
           </tbody>

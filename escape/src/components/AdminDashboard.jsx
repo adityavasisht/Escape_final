@@ -693,6 +693,44 @@ const AdminDashboard = () => {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
+                  <div className="flex items-center justify-between mb-3 px-1">
+                    <h3 className="text-lg font-semibold text-gray-800">Bookings</h3>
+                    <button
+                      onClick={() => {
+                        const header = [
+                          'Trip Name','OTP','Customer Name','Customer Email','Customer Phone','Date','Amount','Status','Total Passengers','Passenger Details'
+                        ];
+                        const rows = bookings.map(b => {
+                          const details = (b.passengers || []).map((p, idx) => `${idx+1}. ${(p.gender||'Other')}${typeof p.age==='number' ? `(${p.age})` : ''}`).join(' | ');
+                          return [
+                            b.tripName || '',
+                            b.tripOTP || '',
+                            b.customerName || '',
+                            b.customerEmail || '',
+                            b.customerPhone || '',
+                            new Date(b.bookingDate).toLocaleDateString(),
+                            b.totalAmount || 0,
+                            b.bookingStatus || '',
+                            b.totalPassengers || (b.passengers?.length || 1),
+                            details
+                          ];
+                        });
+                        const csv = [header, ...rows]
+                          .map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(','))
+                          .join('\n');
+                        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `bookings_${Date.now()}.csv`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-md text-sm"
+                    >
+                      Export CSV
+                    </button>
+                  </div>
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
@@ -710,6 +748,12 @@ const AdminDashboard = () => {
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Amount
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Passengers
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Traveller Details
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Status
@@ -757,6 +801,18 @@ const AdminDashboard = () => {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                             ₹{booking.totalAmount?.toLocaleString()}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {booking.totalPassengers || (booking.passengers?.length || 1)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                            {booking.passengers && booking.passengers.length > 0 ? (
+                              <div className="max-w-xs truncate">
+                                {booking.passengers.map((p, idx) => `${idx ? '; ' : ''}${p.gender || 'Other'}${typeof p.age==='number' ? ` (${p.age})` : ''}`)}
+                              </div>
+                            ) : (
+                              <span className="text-gray-400">—</span>
+                            )}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${

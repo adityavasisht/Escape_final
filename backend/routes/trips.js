@@ -285,7 +285,9 @@ router.post('/book-trip', requireAuth, async (req, res) => {
       customerName,
       customerEmail,
       customerPhone,
-      specialRequests
+      specialRequests,
+      passengers = [],
+      totalPassengers
     } = req.body;
 
     const authenticatedUserId = req.auth.userId;
@@ -309,16 +311,17 @@ router.post('/book-trip', requireAuth, async (req, res) => {
       });
     }
 
-    // Check if trip has available spots
-    const currentBookings = await Booking.countDocuments({ 
-      tripId: tripId,
-      bookingStatus: { $ne: 'cancelled' }
-    });
+    // Seats requested
+    const seatsRequested = Math.max(1, Array.isArray(passengers) ? passengers.length : (parseInt(totalPassengers) || 1));
 
-    if (currentBookings >= trip.maxCapacity) {
+    // Check available seats based on existing active bookings (sum of passengers)
+    const activeBookings = await Booking.find({ tripId, bookingStatus: { $ne: 'cancelled' } }).select('totalPassengers');
+    const seatsTaken = activeBookings.reduce((sum, b) => sum + (b.totalPassengers || 1), 0);
+
+    if (seatsTaken + seatsRequested > trip.maxCapacity) {
       return res.status(400).json({
         success: false,
-        error: 'Trip is fully booked'
+        error: 'Not enough seats available for the requested number of passengers'
       });
     }
 
@@ -334,14 +337,19 @@ router.post('/book-trip', requireAuth, async (req, res) => {
       agencyName: trip.agencyName,
       totalAmount: trip.totalBudget,
       specialRequests: specialRequests || '',
-      bookingStatus: 'confirmed'
+      bookingStatus: 'confirmed',
+      totalPassengers: seatsRequested,
+      passengers: (Array.isArray(passengers) ? passengers : []).map(p => ({
+        gender: ['Male','Female','Other'].includes(p?.gender) ? p.gender : 'Other',
+        age: typeof p?.age === 'number' ? p.age : undefined
+      }))
     });
 
     await booking.save();
 
-    // Update trip's current bookings count
+    // Update trip's current bookings count by seats
     await Trip.findByIdAndUpdate(tripId, {
-      $inc: { currentBookings: 1 }
+      $inc: { currentBookings: seatsRequested }
     });
 
     console.log('✅ Booking created successfully');
@@ -354,7 +362,8 @@ router.post('/book-trip', requireAuth, async (req, res) => {
         tripName: trip.tripName,
         tripOTP: trip.tripOTP,
         bookingDate: booking.bookingDate,
-        totalAmount: booking.totalAmount
+        totalAmount: booking.totalAmount,
+        totalPassengers: booking.totalPassengers
       }
     });
 

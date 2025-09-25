@@ -24,6 +24,7 @@ import AdminDashboard from './components/AdminDashboard';
 import TripDetails from './components/TripDetails';
 import SearchResults from './components/SearchResults';
 import ManageDeals from './components/ManageDeals';
+import AdminTripBookings from './components/AdminTripBookings';
 import CustomerBargain from './components/CustomerBargain';
 import CustomerBargains from './components/CustomerBargains';
 
@@ -465,6 +466,14 @@ const AppContent = () => {
           element={
             <AdminProtectedRoute>
               <AdminDashboard />
+            </AdminProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/admin-bookings/:tripId" 
+          element={
+            <AdminProtectedRoute>
+              <AdminTripBookings />
             </AdminProtectedRoute>
           } 
         />

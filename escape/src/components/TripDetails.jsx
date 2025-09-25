@@ -15,6 +15,7 @@ const TripDetails = () => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isBooking, setIsBooking] = useState(false); // Add booking state
   const [showWelcome, setShowWelcome] = useState(false);
+  const [passengers, setPassengers] = useState([{ gender: 'Other', age: '' }]);
 
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
 
@@ -163,7 +164,11 @@ const TripDetails = () => {
       customerName,
       customerEmail,
       customerPhone,
-      specialRequests
+      specialRequests,
+      passengers: passengers.map(p => ({
+        gender: p.gender,
+        age: p.age ? Number(p.age) : undefined
+      }))
     };
 
     setIsBooking(true); // Set loading state
@@ -638,6 +643,52 @@ const TripDetails = () => {
 
                 {/* Action Buttons */}
                 <div className="space-y-3">
+                  {/* Passengers input */}
+                  <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 mb-2">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-medium text-gray-800">Passengers</span>
+                      <button
+                        type="button"
+                        onClick={() => setPassengers(prev => [...prev, { gender: 'Other', age: '' }])}
+                        className="text-sm px-2 py-1 rounded bg-emerald-100 text-emerald-800"
+                      >
+                        + Add
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {passengers.map((p, idx) => (
+                        <div key={idx} className="flex items-center gap-2">
+                          <select
+                            value={p.gender}
+                            onChange={(e) => setPassengers(prev => prev.map((x, i) => i===idx ? { ...x, gender: e.target.value } : x))}
+                            className="px-2 py-2 border rounded w-32"
+                          >
+                            <option>Male</option>
+                            <option>Female</option>
+                            <option>Other</option>
+                          </select>
+                          <input
+                            type="number"
+                            placeholder="Age"
+                            value={p.age}
+                            onChange={(e) => setPassengers(prev => prev.map((x, i) => i===idx ? { ...x, age: e.target.value } : x))}
+                            className="px-3 py-2 border rounded w-28"
+                            min="0"
+                            max="120"
+                          />
+                          {passengers.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => setPassengers(prev => prev.filter((_, i) => i!==idx))}
+                              className="text-red-600 text-sm"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                   <button
                     onClick={handleBookNow}
                     disabled={isBooking}

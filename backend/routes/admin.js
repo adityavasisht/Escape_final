@@ -947,7 +947,9 @@ router.get('/bookings/:adminId', requireAuth, async (req, res) => {
         bookingDate: booking.bookingDate,
         bookingStatus: booking.bookingStatus,
         totalAmount: booking.totalAmount,
-        specialRequests: booking.specialRequests
+        specialRequests: booking.specialRequests,
+        totalPassengers: booking.totalPassengers || 1,
+        passengers: booking.passengers || []
       }))
     });
     
@@ -957,6 +959,45 @@ router.get('/bookings/:adminId', requireAuth, async (req, res) => {
       success: false,
       error: 'Failed to fetch bookings'
     });
+  }
+});
+
+// Get bookings for a specific trip (admin scoped)
+router.get('/bookings-by-trip/:adminId/:tripId', requireAuth, async (req, res) => {
+  try {
+    const { adminId, tripId } = req.params;
+    const authenticatedUserId = req.auth?.userId;
+
+    if (adminId !== authenticatedUserId) {
+      return res.status(403).json({
+        success: false,
+        error: 'Access denied - you can only view your own trip bookings'
+      });
+    }
+
+    const bookings = await Booking.find({ adminId, tripId })
+      .populate('tripId', 'tripName locations')
+      .sort({ bookingDate: -1 });
+
+    res.json({
+      success: true,
+      bookings: bookings.map(b => ({
+        _id: b._id,
+        tripName: b.tripId?.tripName || 'Unknown Trip',
+        tripOTP: b.tripOTP,
+        customerName: b.customerName,
+        customerEmail: b.customerEmail,
+        customerPhone: b.customerPhone,
+        bookingDate: b.bookingDate,
+        bookingStatus: b.bookingStatus,
+        totalAmount: b.totalAmount,
+        totalPassengers: b.totalPassengers || (b.passengers?.length || 1),
+        passengers: b.passengers || []
+      }))
+    });
+  } catch (error) {
+    console.error('❌ Error fetching trip bookings:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch trip bookings' });
   }
 });
 
