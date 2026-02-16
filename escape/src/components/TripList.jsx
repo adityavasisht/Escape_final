@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useUser, useAuth } from '@clerk/clerk-react'; // Add useAuth
+import { useUser, useAuth } from '@clerk/clerk-react'; 
 
 const TripList = ({ onEdit, onDelete, showAllTrips = false, getToken: propGetToken }) => {
   const { user } = useUser();
-  const { getToken: hookGetToken } = useAuth(); // Add useAuth hook
+  const { getToken: hookGetToken } = useAuth();
   
   // Use prop getToken if provided, otherwise use hook
   const getToken = propGetToken || hookGetToken;
@@ -11,8 +11,30 @@ const TripList = ({ onEdit, onDelete, showAllTrips = false, getToken: propGetTok
   const [trips, setTrips] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  
+  // NEW: State for loading percentage
+  const [loadingPercentage, setLoadingPercentage] = useState(0);
 
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+
+  // NEW: Effect to simulate loading progress
+  useEffect(() => {
+    let interval;
+    if (isLoading) {
+      setLoadingPercentage(10); // Start at 10%
+      interval = setInterval(() => {
+        setLoadingPercentage(prev => {
+          // Slow down progress as it gets higher to "wait" for the actual fetch
+          if (prev >= 90) return 90;
+          const increment = prev > 60 ? 2 : 5; // Go fast initially, then slow
+          return prev + increment;
+        });
+      }, 200);
+    } else {
+      setLoadingPercentage(100);
+    }
+    return () => clearInterval(interval);
+  }, [isLoading]);
 
   useEffect(() => {
     const fetchTrips = async () => {
@@ -30,7 +52,6 @@ const TripList = ({ onEdit, onDelete, showAllTrips = false, getToken: propGetTok
         
         console.log('🔐 TripList - Getting authentication token...');
         
-        // GET AUTHENTICATION TOKEN
         const token = await getToken();
         
         if (!token) {
@@ -39,14 +60,13 @@ const TripList = ({ onEdit, onDelete, showAllTrips = false, getToken: propGetTok
 
         console.log('✅ TripList - Token obtained, fetching trips for admin:', user.id);
         
-        // Use the secure admin route with authentication
         const adminUrl = `${API_BASE_URL}/api/admin/trips`;
         console.log('📡 TripList - Calling authenticated URL:', adminUrl);
         
         const response = await fetch(adminUrl, {
           method: 'GET',
           headers: {
-            'Authorization': `Bearer ${token}`, // CRITICAL: Add auth header
+            'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           }
         });
@@ -80,7 +100,6 @@ const TripList = ({ onEdit, onDelete, showAllTrips = false, getToken: propGetTok
       } catch (error) {
         console.error('❌ TripList - Error:', error);
         
-        // Handle different types of errors
         if (error.name === 'TypeError' && error.message.includes('fetch')) {
           setError('Network error. Please check your internet connection.');
         } else if (error.message.includes('authentication') || error.message.includes('token')) {
@@ -97,12 +116,10 @@ const TripList = ({ onEdit, onDelete, showAllTrips = false, getToken: propGetTok
     fetchTrips();
   }, [user?.id, API_BASE_URL, getToken]);
 
-  // UPDATED: Handle trip deletion with authentication
   const handleDelete = async (tripId) => {
     try {
       console.log('🗑️ Deleting trip:', tripId);
       
-      // GET AUTHENTICATION TOKEN
       const token = await getToken();
       
       if (!token) {
@@ -113,7 +130,7 @@ const TripList = ({ onEdit, onDelete, showAllTrips = false, getToken: propGetTok
       const response = await fetch(`${API_BASE_URL}/api/admin/trips/${tripId}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${token}`, // CRITICAL: Add auth header
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
@@ -132,12 +149,8 @@ const TripList = ({ onEdit, onDelete, showAllTrips = false, getToken: propGetTok
       const result = await response.json();
       
       if (result.success) {
-        // Remove trip from local state
         setTrips(prevTrips => prevTrips.filter(trip => trip._id !== tripId));
-        
-        // Call parent callback if provided
         if (onDelete) onDelete(tripId);
-        
         console.log('✅ Trip deleted successfully');
       } else {
         throw new Error(result.error || 'Failed to delete trip');
@@ -155,16 +168,37 @@ const TripList = ({ onEdit, onDelete, showAllTrips = false, getToken: propGetTok
     userId: user?.id
   });
 
+  // UPDATED: Loading State with Buffering Wheel and Percentage
   if (isLoading) {
     return (
-      <div className="bg-white rounded-xl shadow-md p-8 text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 mx-auto mb-4"></div>
-        <p className="text-gray-600">Loading your trips...</p>
-        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-sm text-blue-800">
-            🔐 Authenticating and fetching secure data...
+      <div className="bg-white rounded-xl shadow-md p-12 text-center flex flex-col items-center justify-center min-h-[400px]">
+        {/* Buffering Wheel Container */}
+        <div className="relative w-24 h-24 mb-6">
+          {/* Background Circle */}
+          <div className="absolute inset-0 border-4 border-gray-100 rounded-full"></div>
+          
+          {/* Spinning Foreground Circle */}
+          <div className="absolute inset-0 border-4 border-emerald-500 rounded-full border-t-transparent animate-spin"></div>
+          
+          {/* Percentage Text in Center */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-lg font-bold text-emerald-600">{loadingPercentage}%</span>
+          </div>
+        </div>
+
+        <h3 className="text-xl font-semibold text-gray-900 mb-2">Loading trips...</h3>
+        <p className="text-gray-500 max-w-sm mx-auto mb-6">
+          Fetching your travel packages from the database. Please wait a moment.
+        </p>
+        
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg max-w-xs w-full">
+          <p className="text-sm text-blue-800 font-medium flex items-center justify-center gap-2">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            Establishing Secure Connection
           </p>
-          <p className="text-xs text-blue-700 mt-1">Admin ID: {user?.id?.slice(-8) || 'Unknown'}</p>
+          <p className="text-xs text-blue-600 mt-1">Admin ID: {user?.id?.slice(-8) || '...'}</p>
         </div>
       </div>
     );
@@ -195,7 +229,6 @@ const TripList = ({ onEdit, onDelete, showAllTrips = false, getToken: propGetTok
           {error.includes('authentication') && (
             <button
               onClick={() => {
-                // Sign out and redirect
                 window.location.href = '/admin-login';
               }}
               className="w-full bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-medium"
@@ -241,8 +274,6 @@ const TripList = ({ onEdit, onDelete, showAllTrips = false, getToken: propGetTok
       </div>
     );
   }
-
-  console.log('✅ TripList - Rendering trips:', trips.map(t => t.tripName));
 
   return (
     <div className="bg-white rounded-xl shadow-md overflow-hidden">
@@ -343,7 +374,6 @@ const TripList = ({ onEdit, onDelete, showAllTrips = false, getToken: propGetTok
                       <button
                         onClick={() => {
                           navigator.clipboard.writeText(trip.tripOTP);
-                          // Could add a toast notification here
                         }}
                         className="ml-2 text-gray-400 hover:text-gray-600"
                         title="Copy OTP"
@@ -355,7 +385,7 @@ const TripList = ({ onEdit, onDelete, showAllTrips = false, getToken: propGetTok
                     )}
                   </div>
                 </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
                   <button
                     onClick={() => onEdit(trip)}
                     className="text-emerald-600 hover:text-emerald-900 font-medium"
@@ -375,22 +405,21 @@ const TripList = ({ onEdit, onDelete, showAllTrips = false, getToken: propGetTok
                     Delete
                   </button>
                 </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                <a
-                  href={`/admin-bookings/${trip._id}`}
-                  className="text-blue-600 hover:text-blue-900"
-                  title="View bookings for this trip"
-                >
-                  View Bookings
-                </a>
-              </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                  <a
+                    href={`/admin-bookings/${trip._id}`}
+                    className="text-blue-600 hover:text-blue-900"
+                    title="View bookings for this trip"
+                  >
+                    View Bookings
+                  </a>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      {/* Security Footer */}
       <div className="px-6 py-3 bg-gray-50 border-t border-gray-200">
         <div className="flex items-center justify-between text-xs text-gray-500">
           <div className="flex items-center">
