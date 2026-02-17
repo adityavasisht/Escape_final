@@ -3,8 +3,7 @@ Here is a comprehensive `README.md` file for your **Escape** project. It covers 
 ---
 ## 🎥 Video Walkthrough
 
-[![Watch the video]([https://cdn.loom.com/sessions/thumbnails/YOUR_LOOM_VIDEO_ID-with-play-button.gif](https://www.loom.com/share/599428dea0434cc98b33db94624b148b))](https://www.loom.com/share/YOUR_LOOM_VIDEO_ID)
-
+[![Watch the video] https://www.loom.com/share/599428dea0434cc98b33db94624b148b
 # Escape - Travel Booking Platform
 
 **Escape** is a full-stack travel booking application designed to help users discover, book, and negotiate customized travel packages. It features a robust admin dashboard for managing trips and bookings, alongside a user-friendly interface for travelers to explore destinations and secure the best deals.
