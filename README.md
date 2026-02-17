@@ -1,6 +1,9 @@
 Here is a comprehensive `README.md` file for your **Escape** project. It covers the tech stack, features, installation instructions, and environment setup for both the frontend and backend.
 
 ---
+## 🎥 Video Walkthrough
+
+[![Watch the video]([https://cdn.loom.com/sessions/thumbnails/YOUR_LOOM_VIDEO_ID-with-play-button.gif](https://www.loom.com/share/599428dea0434cc98b33db94624b148b))](https://www.loom.com/share/YOUR_LOOM_VIDEO_ID)
 
 # Escape - Travel Booking Platform
 
