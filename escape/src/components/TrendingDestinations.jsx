@@ -90,7 +90,7 @@ const TrendingDestinations = () => {
 
         <h3 className="text-xl font-semibold text-gray-800 mb-2">Loading Destinations...</h3>
         <p className="text-gray-500 max-w-sm mx-auto text-center">
-          Fetching the best travel packages from our database.
+          Fetching the best travel packages from our database. Don't go, it WORKS!
         </p>
       </section>
     );
