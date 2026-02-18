@@ -3,13 +3,34 @@ import React, { useEffect, useRef, useState } from 'react';
 const TrendingDestinations = () => {
   const [packages, setPackages] = useState([]);
   const [displayPackages, setDisplayPackages] = useState([]);
+  const [isLoading, setIsLoading] = useState(true); // NEW: Loading state
+  const [loadingPercentage, setLoadingPercentage] = useState(0); // NEW: Percentage state
   const scrollerRef = useRef(null);
   const [error, setError] = useState('');
+  
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+
+  // NEW: Simulate loading progress
+  useEffect(() => {
+    let interval;
+    if (isLoading) {
+      setLoadingPercentage(10); // Start at 10%
+      interval = setInterval(() => {
+        setLoadingPercentage(prev => {
+          if (prev >= 90) return 90; // Pause at 90% until fetch completes
+          return prev + Math.floor(Math.random() * 8) + 2; // Increment randomly between 2-10%
+        });
+      }, 150);
+    } else {
+      setLoadingPercentage(100);
+    }
+    return () => clearInterval(interval);
+  }, [isLoading]);
 
   useEffect(() => {
     const fetchPackages = async () => {
       try {
+        setIsLoading(true); // Ensure it's true when fetching starts
         const response = await fetch(`${API_BASE_URL}/api/trips/public`);
         if (!response.ok) {
           throw new Error('Failed to fetch packages');
@@ -18,6 +39,8 @@ const TrendingDestinations = () => {
         setPackages(data.packages || []);
       } catch (err) {
         setError(err.message);
+      } finally {
+        setIsLoading(false); // Stop loading regardless of success/fail
       }
     };
     fetchPackages();
@@ -44,7 +67,33 @@ const TrendingDestinations = () => {
   };
 
   if (error) {
-    return <div className="text-red-600 text-center my-4">{error}</div>;
+    return <div className="text-red-600 text-center py-20 bg-white">{error}</div>;
+  }
+
+  // NEW: Loading UI
+  if (isLoading) {
+    return (
+      <section className="py-20 bg-white min-h-[400px] flex flex-col items-center justify-center">
+        {/* Buffering Wheel Container */}
+        <div className="relative w-24 h-24 mb-6">
+          {/* Background Circle */}
+          <div className="absolute inset-0 border-4 border-gray-100 rounded-full"></div>
+          
+          {/* Spinning Foreground Circle */}
+          <div className="absolute inset-0 border-4 border-blue-500 rounded-full border-t-transparent animate-spin"></div>
+          
+          {/* Percentage Text in Center */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-lg font-bold text-blue-600">{loadingPercentage}%</span>
+          </div>
+        </div>
+
+        <h3 className="text-xl font-semibold text-gray-800 mb-2">Loading Destinations...</h3>
+        <p className="text-gray-500 max-w-sm mx-auto text-center">
+          Fetching the best travel packages from our database.
+        </p>
+      </section>
+    );
   }
 
   if (!displayPackages.length) {
@@ -57,6 +106,7 @@ const TrendingDestinations = () => {
         <h2 className="text-3xl md:text-4xl font-bold mb-10 text-gray-800 text-center">
           {packages.length <= 3 ? "Available Destinations" : "🔥 Trending Destinations"}
         </h2>
+        
         {!isCarousel ? (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
             {displayPackages.map((package_, index) => (
